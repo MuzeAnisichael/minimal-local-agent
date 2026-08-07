@@ -1,0 +1,17 @@
+[agent]
+model = "qwen3.5:9b"
+base_url = "http://localhost:11434/v1"
+request_limit = 6
+tool_calls_limit = 8
+max_output_tokens = 2048
+temperature = 0.1
+
+[paths]
+workspace = "workspace"
+database = ".minimal-local-agent/state.db"
+
+[tools]
+max_file_bytes = 200000
+max_list_results = 200
+max_search_results = 100
+max_search_files = 500

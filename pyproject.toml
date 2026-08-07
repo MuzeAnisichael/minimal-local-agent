@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "minimal-local-agent"
+version = "0.1.0"
+description = "A minimal, auditable local-first AI agent powered by Ollama."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "MuzeAnisichael" }]
+keywords = ["agent", "ai", "local-first", "ollama", "pydantic-ai"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "pydantic-ai-slim[openai]>=1.0.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9.0",
+  "ruff>=0.9,<1.0",
+]
+
+[project.scripts]
+minimal-agent = "minimal_local_agent.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/MuzeAnisichael/minimal-local-agent"
+Issues = "https://github.com/MuzeAnisichael/minimal-local-agent/issues"
+Source = "https://github.com/MuzeAnisichael/minimal-local-agent"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
