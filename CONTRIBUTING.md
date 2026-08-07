@@ -7,6 +7,7 @@ Thanks for helping keep Minimal Local Agent small and understandable.
 ```bash
 python -m venv .venv
 python -m pip install -e ".[dev]"
+ruff format --check .
 ruff check .
 pytest
 ```
@@ -17,8 +18,9 @@ pytest
 2. Prefer standard-library code and explicit interfaces over new dependencies.
 3. Treat model output and tool arguments as untrusted input.
 4. Keep tools narrow, bounded, testable, and auditable.
-5. Require human confirmation for side effects.
-6. Add tests for every security boundary and bug fix.
+5. Remove capabilities when possible; require diff-backed confirmation otherwise.
+6. Keep tool-event audit metadata useful without duplicating full file contents.
+7. Add deterministic tests for every security boundary and bug fix.
 
 Open an issue before proposing a large dependency, a shell tool, deletion, network
 access, multi-agent orchestration, or a new persistence service.

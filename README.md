@@ -4,53 +4,58 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**One local model, one agent loop, four bounded tools, and an audit trail.**
+**One local model, one agent loop, three read tools, and one optional confirmed write tool.**
 
-[简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md) · [Comparison](docs/COMPARISON.md) · [Validation](docs/VALIDATION.md) · [Security](SECURITY.md)
 
-Minimal Local Agent is a small, local-first reference implementation for building
-useful AI agents without starting with a large orchestration stack. It runs an
-Ollama model through PydanticAI, keeps conversation state in SQLite, and exposes
-only workspace-scoped file tools.
+Minimal Local Agent is a compact reference architecture for local AI agents. It
+runs an Ollama model through PydanticAI, confines tools to one workspace, persists
+sessions and audit events in SQLite, and makes its side-effect policy explicit.
 
-> Status: early alpha. The safety boundaries are intentional, but local models can
-> still make mistakes. Review every proposed write.
+> Status: alpha. The boundaries are enforced in code, but model output remains
+> untrusted. Keep the workspace narrow and inspect proposed writes.
 
 ## Why this project?
 
-Agent prototypes often become difficult to understand before they become useful.
-This project keeps the first version deliberately small:
+Most local-agent projects optimize for breadth: shell access, browser tools,
+channels, plugins, memory layers, or multi-agent orchestration. Those are useful,
+but they make the first security and debugging boundary harder to see.
 
-- **Single agent:** no router, planner hierarchy, or hidden sub-agents.
-- **Local-first:** prompts, file contents, and history stay on the machine when
-  Ollama is local.
-- **Auditable:** runs and tool metadata are stored in one SQLite database.
-- **Bounded:** relative paths only, fixed limits, no deletion, and no shell tool.
-- **Replaceable:** the model, tools, and CLI are separated behind small interfaces.
+This project optimizes for a different goal: **the smallest useful agent whose
+capabilities, changes, and tool behavior are easy to verify.**
+
+- A read-only run does not merely tell the model not to write; `write_file` is not
+  registered at all.
+- A write is validated first, shown as a bounded unified diff, approved once, and
+  checked again before replacement.
+- Tool calls are queryable or exportable from SQLite.
+- A built-in read-only evaluation checks whether an installed model actually uses
+  the expected tools and returns the expected evidence.
+- There is no shell, deletion, network tool, hidden sub-agent, or background daemon.
+
+See the [side-by-side analysis](docs/COMPARISON.md) with smolagents, Qwen-Agent,
+nanobot, and Goose.
 
 ## Features
 
 - Ollama model access with native tool calling
-- Interactive chat and one-shot CLI modes
-- Persistent sessions and model-compatible message history
-- Workspace-confined file listing, reading, plain-text search, and writing
-- Per-call confirmation before every write; non-interactive writes are denied
-- Atomic UTF-8 file writes and protection against path traversal
-- Limits for turns, tool calls, output tokens, file size, and search breadth
-- Local SQLite run log and tool audit events
+- One-shot and interactive CLI modes
+- Persistent sessions and model-compatible history
+- Workspace-scoped listing, reading, text search, and optional writing
+- Strict read-only policy that removes the write capability
+- Diff-first, per-call confirmation with visible line endings; non-interactive
+  writes are denied
+- Atomic UTF-8 replacement and path-traversal protection
+- Limits for requests, tool calls, output, file size, and search breadth
+- SQLite run history plus inspectable tool audit events
+- Three-case local model evaluation for list/read/search tool use
 - TOML configuration with `MLA_*` environment overrides
-- Unit tests and a minimal GitHub Actions workflow
+- Python 3.11/3.12 CI and unit tests that do not require Ollama
 
 ## Quick start
 
-### Requirements
-
-- Python 3.11 or newer
-- [Ollama](https://ollama.com/) running locally
-- A tool-capable Ollama model
-
-The default model is `qwen3.5:9b`. Its quantized Ollama artifact is about 6.6 GB.
-For machines with less available memory, use `qwen3.5:4b` instead.
+Requirements: Python 3.11+, a running [Ollama](https://ollama.com/) server, and an
+installed model that supports tool calling.
 
 ### Windows PowerShell
 
@@ -80,13 +85,11 @@ minimal-agent doctor
 minimal-agent chat
 ```
 
-If `qwen3.5:9b` is too slow or does not fit, change `model` in `agent.toml` and run:
-
-```bash
-ollama pull qwen3.5:4b
-```
+Change `model` in `agent.toml` when using another installed Ollama model.
 
 ## Usage
+
+Place files the agent may inspect under `workspace/`.
 
 Run one task:
 
@@ -94,63 +97,78 @@ Run one task:
 minimal-agent run "Summarize the Markdown files in the workspace"
 ```
 
-Start or resume an interactive session:
+Remove the write capability for one run or chat:
+
+```bash
+minimal-agent run --read-only "Review these files and suggest improvements"
+minimal-agent chat --read-only
+```
+
+Start or resume a session:
 
 ```bash
 minimal-agent chat
 minimal-agent chat --session 20260808-120000-a1b2c3
 ```
 
-Inspect local history:
+Inspect runs and tool events:
 
 ```bash
 minimal-agent sessions
 minimal-agent history 20260808-120000-a1b2c3
+minimal-agent audit 20260808-120000-a1b2c3
+minimal-agent audit 20260808-120000-a1b2c3 --json
 ```
 
-Machine-readable output:
+Compare installed local models with isolated, read-only checks:
 
 ```bash
-minimal-agent run --json "Find references to TODO"
+minimal-agent eval --model qwen3:4b --model qwen3:8b
+minimal-agent eval --model qwen3:8b --json
 ```
 
-Put files the agent may access under `workspace/`. When the model requests a write,
-the CLI shows the path, size, and overwrite flag, then asks for one-time approval.
+Each model must call the expected `list_files`, `read_file`, and `search_text` tool
+and return the expected value. The command exits non-zero if any case fails. This is
+a fast compatibility check, not a general intelligence benchmark. Runs use the
+same read-only policy, temperature `0`, four-request/four-tool limits, and a 4096
+output-token budget so model comparisons do not inherit unrelated task settings.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    User["CLI user"] --> Loop["Single PydanticAI loop"]
-    Loop --> Model["Ollama model"]
-    Loop --> Tools["Four explicit tools"]
-    Tools --> Guard["Workspace guard + limits"]
+    User["CLI user"] --> Loop["Single bounded agent loop"]
+    Loop <--> Model["Ollama model"]
+    Loop --> Read["3 read tools"]
+    Loop -. "only when policy=confirm" .-> Write["write_file"]
+    Read --> Guard["Workspace guard + limits"]
+    Write --> Preview["Validate + unified diff"]
+    Preview --> Approval{"Approve once?"}
+    Approval -->|yes| Guard
+    Approval -->|no| Loop
     Guard --> Files["workspace/"]
     Loop --> Store["SQLite history + audit"]
-    Tools --> Confirm{"Write?"}
-    Confirm -->|approve once| Files
-    Confirm -->|deny| Loop
 ```
 
-The agent is the model plus instructions and tools. PydanticAI owns the bounded
-tool-calling loop. Application code owns the security boundary, persistence, and
-human confirmation. There is no autonomous background process.
+PydanticAI owns the bounded model/tool loop. Application code owns capability
+registration, filesystem enforcement, confirmation, and persistence. The model
+cannot add tools at runtime.
 
-### Available tools
+### Tool surface
 
-| Tool | Side effect | Bounds |
+| Tool | Side effect | Runtime bounds |
 |---|---:|---|
-| `list_files` | No | Relative path, safe glob, result limit |
+| `list_files` | No | Relative directory, recursive, result limit |
 | `read_file` | No | UTF-8 text, file-size limit |
-| `search_text` | No | Plain text only, file and match limits |
-| `write_file` | Yes | Explicit approval, UTF-8, atomic write, size limit |
+| `search_text` | No | Recursive plain-text search, file and match limits |
+| `write_file` | Yes | Optional registration, diff, approval, atomic write |
 
-Deletion, shell execution, network requests, and arbitrary Python execution are not
-available in v0.1.0.
+Deletion, shell execution, arbitrary Python execution, and network requests are
+not exposed as tools.
 
 ## Configuration
 
-Copy `agent.example.toml` to `agent.toml`. The local file is ignored by Git.
+Copy `agent.example.toml` to `agent.toml`; the local file is ignored by Git.
 
 ```toml
 [agent]
@@ -160,14 +178,20 @@ request_limit = 6
 tool_calls_limit = 8
 max_output_tokens = 2048
 temperature = 0.1
+write_policy = "confirm" # "confirm" or "deny"
 
 [paths]
 workspace = "workspace"
 database = ".minimal-local-agent/state.db"
+
+[tools]
+max_file_bytes = 200000
+max_list_results = 200
+max_search_results = 100
+max_search_files = 500
 ```
 
-Relative paths are resolved from the configuration file's directory. Every value
-can be overridden for automation:
+Relative paths are resolved from the configuration file's directory.
 
 | Environment variable | Setting |
 |---|---|
@@ -176,8 +200,9 @@ can be overridden for automation:
 | `MLA_BASE_URL` | Ollama OpenAI-compatible endpoint |
 | `MLA_WORKSPACE` | Allowed workspace root |
 | `MLA_DATABASE` | SQLite database path |
+| `MLA_WRITE_POLICY` | `confirm` or `deny` |
 | `MLA_REQUEST_LIMIT` | Maximum model requests per run |
-| `MLA_TOOL_CALLS_LIMIT` | Maximum successful tool calls per run |
+| `MLA_TOOL_CALLS_LIMIT` | Maximum tool calls per run |
 | `MLA_MAX_OUTPUT_TOKENS` | Maximum output tokens per run |
 | `MLA_TEMPERATURE` | Sampling temperature |
 | `MLA_MAX_FILE_BYTES` | Per-file read/write limit |
@@ -187,76 +212,88 @@ can be overridden for automation:
 
 ## Security model
 
-Model output is untrusted, even when the model runs locally. The runtime enforces
-the following controls in ordinary Python code:
+Model output is untrusted even when inference is local. The runtime enforces:
 
-1. Absolute paths and traversal outside the configured workspace are rejected.
-2. Existing symlinks are resolved before the workspace boundary is checked.
-3. Reads, writes, searches, model turns, and tool calls have fixed limits.
-4. Every write requires interactive approval and is denied when stdin is not a TTY.
-5. Writes use a temporary file followed by an atomic replacement.
-6. No tool can delete files, execute commands, or access the network.
-7. Runs and tool metadata are recorded locally for later inspection.
+1. Relative paths confined to one configured workspace.
+2. Symlink resolution before the workspace boundary check.
+3. Fixed model, tool, output, file, and search limits.
+4. Mechanical removal of `write_file` under the `deny` policy.
+5. Validation and a bounded unified diff before each write approval.
+6. Automatic denial when stdin is not interactive.
+7. Revalidation and same-directory atomic replacement after approval.
+8. No delete, shell, Python, or network tool.
+9. Local run and tool-event records for later inspection.
 
 Do not configure a home directory or another broad secret-bearing directory as the
-workspace. See [SECURITY.md](SECURITY.md) for reporting and operational guidance.
+workspace. A remote Ollama URL moves prompts and tool results outside the local
+privacy boundary. See [SECURITY.md](SECURITY.md).
 
-## Local data
-
-By default, generated state is not committed:
+## Local data and audit scope
 
 ```text
-.minimal-local-agent/state.db   # sessions, message history, audit metadata
-workspace/                      # user-provided and agent-approved files
+.minimal-local-agent/state.db   # sessions, history, run and tool metadata
+workspace/                      # user data and approved outputs
 agent.toml                      # local configuration
 ```
 
-The audit log records prompts, final responses, errors, usage, tool names, paths,
-queries, counts, and statuses. It intentionally does not duplicate full file content
-inside tool-event rows; model message history may contain content returned to the
-model.
+Tool-event rows include names, statuses, paths, queries, counts, byte sizes, and a
+diff hash. They do not duplicate full file contents. Model message history can
+contain content returned by read tools.
 
 ## Development
 
 ```bash
 python -m pip install -e ".[dev]"
+ruff format --check .
 ruff check .
 pytest
 ```
 
-An Ollama server is not required for unit tests. Use `minimal-agent doctor` for the
-local integration check.
+Ollama is not required for unit tests. Use `minimal-agent doctor` for connectivity
+and `minimal-agent eval` for real model/tool integration.
 
 ### Repository layout
 
 ```text
 minimal-local-agent/
 ├── .github/workflows/ci.yml
+├── docs/
+│   ├── COMPARISON.md
+│   ├── COMPARISON.zh-CN.md
+│   └── VALIDATION.md
 ├── src/minimal_local_agent/
-│   ├── agent.py       # model, instructions, tools, bounded loop
-│   ├── cli.py         # run/chat/doctor/history commands
-│   ├── config.py      # TOML and environment configuration
+│   ├── agent.py       # instructions, capability registry, bounded loop
+│   ├── cli.py         # run/chat/audit/eval commands
+│   ├── config.py      # TOML, environment, policies
+│   ├── evals.py       # isolated local-model checks
 │   ├── security.py    # path boundary enforcement
-│   ├── store.py       # SQLite history and audit log
-│   └── workspace.py   # pure file operations
+│   ├── store.py       # SQLite history and audit events
+│   └── workspace.py   # file operations and diff preview
 ├── tests/
 ├── workspace/
 ├── agent.example.toml
+├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
 └── pyproject.toml
 ```
 
-## Roadmap
+## Deliberate limits and roadmap
 
-- Add streaming output without weakening auditability
-- Add opt-in read-only MCP tools
-- Add a small task-based evaluation suite for local models
-- Add context compaction for long sessions
-- Add an optional HTTP API after the CLI behavior stabilizes
+The project does not try to replace full agent platforms. It currently lacks
+streaming, a GUI, MCP, browser/shell tools, long-term semantic memory, and
+multi-agent orchestration.
 
-Multi-agent orchestration, vector databases, shell access, and a web UI are not
-roadmap defaults. They should be added only for a measured use case.
+Near-term work should preserve the small trust boundary:
+
+- broader adversarial and multilingual local-model evaluation;
+- streaming without losing complete audit records;
+- context compaction for long sessions;
+- an opt-in, read-only MCP adapter with an explicit allowlist;
+- patch-oriented edits after the full-file write path is proven stable.
+
+Large dependencies and powerful tools should be added only when a measured use
+case justifies their security and maintenance cost.
 
 ## License
 

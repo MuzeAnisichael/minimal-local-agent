@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import os
 import tempfile
 from dataclasses import dataclass
@@ -19,6 +20,43 @@ EXCLUDED_PARTS = {
     "__pycache__",
     "node_modules",
 }
+
+
+def _visible_diff_lines(text: str) -> list[str]:
+    """Represent line-ending-only changes explicitly in a readable text diff."""
+
+    lines: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if line.endswith("\r\n"):
+            lines.append(f"{line[:-2]} ⟪CRLF⟫")
+        elif line.endswith("\n"):
+            lines.append(line[:-1])
+        elif line.endswith("\r"):
+            lines.append(f"{line[:-1]} ⟪CR⟫")
+        else:
+            lines.append(f"{line} ⟪no newline at end of file⟫")
+    return lines
+
+
+@dataclass(frozen=True, slots=True)
+class WritePreview:
+    """Validated write metadata and the exact textual change shown for approval."""
+
+    path: str
+    bytes: int
+    overwrite: bool
+    existed: bool
+    diff: str
+    diff_truncated: bool
+
+    def approval_detail(self) -> str:
+        change = self.diff or "(no textual difference; file metadata may change)"
+        return (
+            f"Path: {self.path}\n"
+            f"Size: {self.bytes} bytes\n"
+            f"Overwrite: {self.overwrite}\n\n"
+            f"{change}"
+        )
 
 
 @dataclass(slots=True)
@@ -122,6 +160,60 @@ class WorkspaceTools:
                         return matches
         return matches
 
+    def preview_write(
+        self,
+        path: str,
+        content: str,
+        *,
+        overwrite: bool = False,
+        max_diff_chars: int = 12_000,
+    ) -> WritePreview:
+        """Validate a proposed write and return a bounded unified diff."""
+
+        if max_diff_chars < 1:
+            raise ValueError("max_diff_chars must be at least 1")
+
+        target = self.guard.resolve(path)
+        existed = target.exists()
+        if existed and target.is_dir():
+            raise IsADirectoryError(f"Cannot replace a directory: {path}")
+        if existed and not overwrite:
+            raise FileExistsError(
+                f"File already exists: {path}. Set overwrite=true only when "
+                "replacement is intended."
+            )
+
+        encoded = content.encode("utf-8")
+        if len(encoded) > self.max_file_bytes:
+            raise ValueError(
+                f"Content is {len(encoded)} bytes; limit is {self.max_file_bytes} bytes"
+            )
+
+        previous = self.read_file(path) if existed else ""
+        relative = self.guard.relative(target)
+        before_label = f"a/{relative}" if existed else "/dev/null"
+        diff = "\n".join(
+            difflib.unified_diff(
+                _visible_diff_lines(previous),
+                _visible_diff_lines(content),
+                fromfile=before_label,
+                tofile=f"b/{relative}",
+                lineterm="",
+            )
+        )
+        truncated = len(diff) > max_diff_chars
+        if truncated:
+            diff = f"{diff[:max_diff_chars]}\n... [diff truncated]"
+
+        return WritePreview(
+            path=relative,
+            bytes=len(encoded),
+            overwrite=overwrite,
+            existed=existed,
+            diff=diff,
+            diff_truncated=truncated,
+        )
+
     def write_file(self, path: str, content: str, *, overwrite: bool = False) -> int:
         target = self.guard.resolve(path)
         if target.exists() and target.is_dir():
@@ -157,4 +249,4 @@ class WorkspaceTools:
         return len(encoded)
 
 
-__all__ = ["WorkspaceSecurityError", "WorkspaceTools"]
+__all__ = ["WorkspaceSecurityError", "WorkspaceTools", "WritePreview"]

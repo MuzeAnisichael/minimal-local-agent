@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import secrets
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -53,7 +55,7 @@ class AuditStore:
     def __init__(self, path: Path) -> None:
         self.path = path.expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.executescript(SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
@@ -63,17 +65,32 @@ class AuditStore:
         connection.execute("PRAGMA journal_mode = WAL")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        """Commit or roll back a transaction, then always release the file handle."""
+
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
     def new_session(self) -> str:
         timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         session_id = f"{timestamp}-{secrets.token_hex(3)}"
         self.ensure_session(session_id)
         return session_id
 
-    def ensure_session(self, session_id: str) -> None:
+    @staticmethod
+    def _validate_session_id(session_id: str) -> None:
         if not session_id.strip() or len(session_id) > 120:
             raise ValueError("session_id must contain 1 to 120 characters")
+
+    def ensure_session(self, session_id: str) -> None:
+        self._validate_session_id(session_id)
         now = _now()
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO sessions(id, created_at, updated_at)
@@ -85,7 +102,7 @@ class AuditStore:
 
     def load_history(self, session_id: str) -> str | None:
         self.ensure_session(session_id)
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT history_json FROM sessions WHERE id = ?", (session_id,)
             ).fetchone()
@@ -93,7 +110,7 @@ class AuditStore:
 
     def save_history(self, session_id: str, history_json: str) -> None:
         self.ensure_session(session_id)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 UPDATE sessions
@@ -116,7 +133,7 @@ class AuditStore:
         self.ensure_session(session_id)
         now = _now()
         usage_json = None if usage is None else json.dumps(usage, default=str)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO runs(
@@ -146,7 +163,7 @@ class AuditStore:
         details: dict[str, Any],
     ) -> None:
         self.ensure_session(session_id)
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO tool_events(
@@ -163,7 +180,7 @@ class AuditStore:
             )
 
     def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT s.id, s.created_at, s.updated_at, COUNT(r.id) AS run_count
@@ -178,8 +195,8 @@ class AuditStore:
         return [dict(row) for row in rows]
 
     def get_runs(self, session_id: str) -> list[dict[str, Any]]:
-        self.ensure_session(session_id)
-        with self._connect() as connection:
+        self._validate_session_id(session_id)
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT id, created_at, prompt, response, success, error, usage_json
@@ -190,3 +207,25 @@ class AuditStore:
                 (session_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_tool_events(self, session_id: str) -> list[dict[str, Any]]:
+        """Return ordered, JSON-decoded tool audit events for one session."""
+
+        self._validate_session_id(session_id)
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, created_at, tool_name, status, details_json
+                FROM tool_events
+                WHERE session_id = ?
+                ORDER BY id
+                """,
+                (session_id,),
+            ).fetchall()
+
+        events: list[dict[str, Any]] = []
+        for row in rows:
+            event = dict(row)
+            event["details"] = json.loads(event.pop("details_json"))
+            events.append(event)
+        return events

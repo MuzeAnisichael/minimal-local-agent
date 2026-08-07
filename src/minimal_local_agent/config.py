@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_BASE_URL = "http://localhost:11434/v1"
+WRITE_POLICIES = frozenset({"confirm", "deny"})
 
 
 def _path(value: str | Path, base_dir: Path) -> Path:
@@ -44,6 +45,7 @@ class Settings:
     tool_calls_limit: int = 8
     max_output_tokens: int = 2048
     temperature: float = 0.1
+    write_policy: str = "confirm"
     max_file_bytes: int = 200_000
     max_list_results: int = 200
     max_search_results: int = 100
@@ -66,6 +68,9 @@ class Settings:
                 raise ValueError(f"{name} must be at least 1")
         if not 0 <= self.temperature <= 2:
             raise ValueError("temperature must be between 0 and 2")
+        if self.write_policy not in WRITE_POLICIES:
+            allowed = ", ".join(sorted(WRITE_POLICIES))
+            raise ValueError(f"write_policy must be one of: {allowed}")
 
     @classmethod
     def load(cls, config_path: str | Path | None = None) -> Settings:
@@ -120,6 +125,15 @@ class Settings:
                 "MLA_MAX_OUTPUT_TOKENS", agent.get("max_output_tokens", 2048), int
             ),
             temperature=_env("MLA_TEMPERATURE", agent.get("temperature", 0.1), float),
+            write_policy=str(
+                _env(
+                    "MLA_WRITE_POLICY",
+                    agent.get("write_policy", "confirm"),
+                    str,
+                )
+            )
+            .strip()
+            .casefold(),
             max_file_bytes=_env(
                 "MLA_MAX_FILE_BYTES", tools.get("max_file_bytes", 200_000), int
             ),

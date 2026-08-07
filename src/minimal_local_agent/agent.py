@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
@@ -24,14 +25,29 @@ Rules:
 - Work only through the tools you are given and only with relative workspace paths.
 - Prefer read-only inspection. Never claim a file was read or changed unless a tool
   result confirms it.
-- Before writing, explain the intended change briefly, then call write_file. The
-  runtime will ask the user for approval.
 - Deletion and shell execution are intentionally unavailable. Do not simulate them.
 - If a tool returns an error, correct the request when safe; do not repeat a denied
   write request.
 - Stop when the task is complete or the available evidence is insufficient.
 - Reply in the user's language and keep the final response concise.
 """.strip()
+
+
+def _system_prompt(settings: Settings) -> str:
+    if settings.write_policy == "deny":
+        capability = """
+Runtime capability:
+- This run is read-only. No write tool is registered.
+- You may explain or propose changes, but never claim they were applied.
+"""
+    else:
+        capability = """
+Runtime capability:
+- write_file is available. Before using it, explain the intended change briefly.
+- The runtime validates the request and shows the user a unified diff before asking
+  for one-time approval.
+"""
+    return f"{SYSTEM_PROMPT}\n\n{capability.strip()}"
 
 
 Confirm = Callable[[str, str], bool]
@@ -72,7 +88,7 @@ def build_agent(settings: Settings) -> Agent[AgentDependencies, str]:
     agent: Agent[AgentDependencies, str] = Agent(
         model,
         deps_type=AgentDependencies,
-        instructions=SYSTEM_PROMPT,
+        instructions=_system_prompt(settings),
         model_settings=ModelSettings(
             temperature=settings.temperature,
             max_tokens=settings.max_output_tokens,
@@ -83,17 +99,16 @@ def build_agent(settings: Settings) -> Agent[AgentDependencies, str]:
     def list_files(
         ctx: RunContext[AgentDependencies],
         path: str = ".",
-        pattern: str = "**/*",
     ) -> dict[str, Any]:
-        """List workspace paths. ``path`` and ``pattern`` must remain relative."""
+        """Recursively list paths under a relative workspace directory."""
 
         try:
-            items = ctx.deps.workspace.list_files(path, pattern)
+            items = ctx.deps.workspace.list_files(path)
             ctx.deps.store.record_tool_event(
                 ctx.deps.session_id,
                 "list_files",
                 "ok",
-                {"path": path, "pattern": pattern, "count": len(items)},
+                {"path": path, "count": len(items)},
             )
             return {"ok": True, "items": items, "count": len(items)}
         except Exception as exc:  # The error is intentionally returned to the model.
@@ -101,7 +116,7 @@ def build_agent(settings: Settings) -> Agent[AgentDependencies, str]:
                 ctx.deps.session_id,
                 "list_files",
                 "error",
-                {"path": path, "pattern": pattern, "error": str(exc)},
+                {"path": path, "error": str(exc)},
             )
             return {"ok": False, "error": str(exc)}
 
@@ -132,14 +147,13 @@ def build_agent(settings: Settings) -> Agent[AgentDependencies, str]:
         ctx: RunContext[AgentDependencies],
         query: str,
         path: str = ".",
-        pattern: str = "**/*",
         case_sensitive: bool = False,
     ) -> dict[str, Any]:
-        """Search plain text in workspace files and return matching lines."""
+        """Recursively search text under a relative workspace directory."""
 
         try:
             matches = ctx.deps.workspace.search_text(
-                query, path, pattern, case_sensitive=case_sensitive
+                query, path, case_sensitive=case_sensitive
             )
             ctx.deps.store.record_tool_event(
                 ctx.deps.session_id,
@@ -148,7 +162,6 @@ def build_agent(settings: Settings) -> Agent[AgentDependencies, str]:
                 {
                     "query": query,
                     "path": path,
-                    "pattern": pattern,
                     "count": len(matches),
                 },
             )
@@ -162,48 +175,77 @@ def build_agent(settings: Settings) -> Agent[AgentDependencies, str]:
             )
             return {"ok": False, "error": str(exc)}
 
-    @agent.tool
-    def write_file(
-        ctx: RunContext[AgentDependencies],
-        path: str,
-        content: str,
-        overwrite: bool = False,
-    ) -> dict[str, Any]:
-        """Write UTF-8 text after explicit user confirmation."""
+    if settings.write_policy == "confirm":
 
-        detail = (
-            f"Write {len(content.encode('utf-8'))} bytes to {path!r} "
-            f"(overwrite={overwrite})"
-        )
-        if not ctx.deps.confirm("write_file", detail):
-            ctx.deps.store.record_tool_event(
-                ctx.deps.session_id,
-                "write_file",
-                "denied",
-                {"path": path, "overwrite": overwrite},
-            )
-            return {
-                "ok": False,
-                "code": "approval_denied",
-                "error": "The user did not approve this write. Do not retry it.",
+        @agent.tool
+        def write_file(
+            ctx: RunContext[AgentDependencies],
+            path: str,
+            content: str,
+            overwrite: bool = False,
+        ) -> dict[str, Any]:
+            """Validate, preview, and write UTF-8 text after explicit approval."""
+
+            try:
+                preview = ctx.deps.workspace.preview_write(
+                    path, content, overwrite=overwrite
+                )
+            except Exception as exc:
+                ctx.deps.store.record_tool_event(
+                    ctx.deps.session_id,
+                    "write_file",
+                    "error",
+                    {"path": path, "overwrite": overwrite, "error": str(exc)},
+                )
+                return {"ok": False, "error": str(exc)}
+
+            audit_details = {
+                "path": preview.path,
+                "overwrite": preview.overwrite,
+                "existed": preview.existed,
+                "bytes": preview.bytes,
+                "diff_truncated": preview.diff_truncated,
+                "diff_sha256": hashlib.sha256(preview.diff.encode()).hexdigest(),
             }
-        try:
-            written = ctx.deps.workspace.write_file(path, content, overwrite=overwrite)
-            ctx.deps.store.record_tool_event(
-                ctx.deps.session_id,
-                "write_file",
-                "ok",
-                {"path": path, "overwrite": overwrite, "bytes": written},
-            )
-            return {"ok": True, "path": path, "bytes": written}
-        except Exception as exc:
-            ctx.deps.store.record_tool_event(
-                ctx.deps.session_id,
-                "write_file",
-                "error",
-                {"path": path, "overwrite": overwrite, "error": str(exc)},
-            )
-            return {"ok": False, "error": str(exc)}
+            if not ctx.deps.confirm("write_file", preview.approval_detail()):
+                ctx.deps.store.record_tool_event(
+                    ctx.deps.session_id,
+                    "write_file",
+                    "denied",
+                    audit_details,
+                )
+                return {
+                    "ok": False,
+                    "code": "approval_denied",
+                    "error": "The user did not approve this write. Do not retry it.",
+                }
+
+            try:
+                fresh_preview = ctx.deps.workspace.preview_write(
+                    path, content, overwrite=overwrite
+                )
+                if fresh_preview != preview:
+                    raise RuntimeError(
+                        "The target changed after approval preview; write cancelled."
+                    )
+                written = ctx.deps.workspace.write_file(
+                    path, content, overwrite=overwrite
+                )
+                ctx.deps.store.record_tool_event(
+                    ctx.deps.session_id,
+                    "write_file",
+                    "ok",
+                    audit_details,
+                )
+                return {"ok": True, "path": preview.path, "bytes": written}
+            except Exception as exc:
+                ctx.deps.store.record_tool_event(
+                    ctx.deps.session_id,
+                    "write_file",
+                    "error",
+                    {**audit_details, "error": str(exc)},
+                )
+                return {"ok": False, "error": str(exc)}
 
     return agent
 
@@ -259,10 +301,7 @@ class LocalAgent:
                 ),
             )
             response = str(result.output)
-            usage_value = result.usage
-            if callable(usage_value):  # Compatibility with older PydanticAI releases.
-                usage_value = usage_value()
-            usage = _usage_dict(usage_value)
+            usage = _usage_dict(result.usage)
             serialized = ModelMessagesTypeAdapter.dump_json(
                 result.all_messages()
             ).decode("utf-8")

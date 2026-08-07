@@ -5,6 +5,7 @@ request_limit = 6
 tool_calls_limit = 8
 max_output_tokens = 2048
 temperature = 0.1
+write_policy = "confirm" # "confirm" or "deny"
 
 [paths]
 workspace = "workspace"
