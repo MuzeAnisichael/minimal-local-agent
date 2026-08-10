@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented here.
 
+## [0.5.0] - 2026-08-10
+
+### Added
+
+- Transactional `edit_files` for exact, unique replacements across multiple files,
+  with optional source hashes, one combined approval, stale checks, and rollback.
+- Reversible change sets with `changes`, `change`, and guarded `undo` commands.
+- Preview-only `--dry-run` mode that validates and renders mutations without writing.
+- Stable `AgentRuntime` embedding API, replaceable model factory, capability policy
+  compiler, and structured runtime events with optional JSONL CLI streaming.
+- Versioned SQLite migrations and per-session hash-chained execution receipts with
+  `receipts`, internal `verify`, and externally anchored `verify --head` commands.
+- Per-tool policy overrides and a `capabilities` command showing the effective
+  model-visible policy and fingerprint.
+- Optional MCP client extra with loopback-only HTTP endpoints, explicit per-server
+  tool allowlists, name prefixes, result limits, and audit-safe argument hashes.
+- Versioned external JSON evaluation datasets, forbidden-tool assertions, expected
+  error statuses, and an included adversarial boundary dataset.
+- Optional MCP integration CI using a real local streamable-HTTP test server.
+
+### Changed
+
+- `write_file` now uses the same transaction engine as patch-oriented edits.
+- Successful and failed model runs both receive execution receipts.
+- Real-model evaluation reports the dataset name and clears unrelated tool/MCP
+  policies for reproducibility.
+- Documentation now describes v0.5 architecture, MCP trust boundaries, undo data,
+  embedding APIs, and remaining non-goals.
+
+### Security
+
+- Write tools cannot be configured to bypass approval.
+- Denied read, write, and MCP capabilities are omitted from the actual tool surface.
+- MCP server instructions, sampling, elicitation, roots, implicit tool exposure,
+  remote endpoints, and oversized results are rejected or disabled.
+- Undo refuses to overwrite files changed after the original transaction.
+
 ## [0.2.0] - 2026-08-08
 
 ### Added
@@ -34,3 +71,4 @@ All notable changes to this project are documented here.
 
 [0.2.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MuzeAnisichael/minimal-local-agent/releases/tag/v0.1.0
+[0.5.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.2.0...v0.5.0

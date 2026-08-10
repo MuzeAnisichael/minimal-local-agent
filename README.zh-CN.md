@@ -1,47 +1,43 @@
 # Minimal Local Agent
 
-**一个本地模型、一个 Agent 循环、三个只读工具，以及一个可选的确认式写入工具。**
+**一个极简、可审计的本地 Agent 内核：单模型循环、显式能力、可撤销编辑，并且没有 Shell。**
 
-[English](README.md) · [同类项目对比](docs/COMPARISON.zh-CN.md) · [验证记录](docs/VALIDATION.md) · [安全策略](SECURITY.md)
+[English](README.md) · [同类项目对比](docs/COMPARISON.zh-CN.md) ·
+[验证记录](docs/VALIDATION.md) · [安全策略](SECURITY.md)
 
-Minimal Local Agent 是一个极简、可审计的本地 Agent 参考架构。它通过
-PydanticAI 调用 Ollama，用 SQLite 保存会话和审计记录，并把工具严格限制在
-一个工作区内。
+Minimal Local Agent 通过 PydanticAI 调用 Ollama，将文件工具限制在一个工作区内，并用
+SQLite 保存会话、审计事件、可撤销变更和哈希链执行凭证。
 
-> 当前为 Alpha 版本。安全边界由代码执行，但模型输出仍是不可信输入。
+当前版本为 `0.5.0` Alpha。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为
+不可信输入。
 
-## 核心定位
+## 核心差异
 
-许多本地 Agent 项目优先扩展 Shell、浏览器、聊天渠道、插件、记忆和多 Agent。
-本项目选择另一条路线：**先做出能力、改动和工具行为都容易验证的最小可用
-Agent，再按真实需求扩展。**
+- 策略会改变模型实际可见的工具 schema，而不只是修改提示词。
+- 多文件编辑先整体暂存和展示 diff，只批准一次，再校验并以事务方式提交或回滚。
+- 已应用变更可查看、可撤销；如果文件后来被修改，撤销会安全拒绝。
+- 每次运行都会产生结构化事件和哈希链执行凭证。
+- MCP 为可选能力，只允许回环地址、显式工具白名单、名称前缀和结果大小限制。
+- 核心不提供 Shell、删除、浏览器控制、后台守护进程和隐藏子 Agent。
 
-- 只读模式不是靠提示词约束，而是完全不向模型注册 `write_file`。
-- 写入前先校验路径和大小，再展示统一 diff，并且只允许单次确认。
-- 会话、运行结果和工具事件都可从 SQLite 查询或导出。
-- 内置隔离、只读的本地模型评测，验证模型是否真的调用了预期工具。
-- 默认没有 Shell、删除、网络、后台进程或隐藏子 Agent。
+更完整的取舍见[同类项目对比](docs/COMPARISON.zh-CN.md)。
 
-完整分析见[同类项目对比](docs/COMPARISON.zh-CN.md)。
+## v0.5 能力
 
-## 功能
-
-- Ollama 本地模型与原生工具调用
-- 单次任务和交互式 CLI
-- 持久化会话及模型消息历史
-- 工作区内的文件列表、读取、文本搜索和可选写入
-- 真正移除写入能力的只读策略
-- 写入前统一 diff（显式标注换行差异）、逐次确认和非交互环境自动拒绝
-- UTF-8 原子写入、路径穿越与工作区越界防护
-- 模型请求、工具调用、输出、文件和搜索范围上限
-- SQLite 运行历史与工具审计
-- 面向本地模型的 list/read/search 三项快速评测
-- TOML 配置、`MLA_*` 环境变量覆盖、Python 3.11/3.12 CI
+| 范围 | 已实现 |
+|---|---|
+| 运行时 | 稳定的 `AgentRuntime` API、可替换模型工厂、受限单 Agent 循环 |
+| 只读工具 | `list_files`、`read_file`、`search_text` |
+| 变更工具 | `write_file`、事务式 `edit_files` |
+| 变更安全 | 统一 diff、确认/预览/拒绝、陈旧检查、回滚、撤销 |
+| 策略 | 逐工具 allow/deny，拒绝能力从工具面机械移除 |
+| 可观测性 | SQLite 审计、JSONL 事件、哈希链执行凭证 |
+| 扩展 | 可选、显式白名单的本机 HTTP MCP 客户端 |
+| 评测 | 内置模型冒烟测试和外部版本化 JSON 数据集 |
 
 ## 快速开始
 
-需要 Python 3.11+、本地运行的 [Ollama](https://ollama.com/)，以及支持工具调用的
-模型。
+需要 Python 3.11+、正在运行的 [Ollama](https://ollama.com/) 和支持工具调用的模型。
 
 ### Windows PowerShell
 
@@ -71,69 +67,66 @@ minimal-agent doctor
 minimal-agent chat
 ```
 
-如果使用其他已安装模型，修改 `agent.toml` 中的 `model`。
+只把允许 Agent 访问的文件放入 `workspace/`。
 
-## 使用方式
-
-把允许 Agent 访问的文件放入 `workspace/`。
+## 常用命令
 
 ```bash
-# 单次任务
+# 单次任务或交互会话
 minimal-agent run "总结工作区中的 Markdown 文件"
-
-# 只读运行：模型根本看不到 write_file
-minimal-agent run --read-only "审查这些文件并提出改进建议"
-minimal-agent chat --read-only
-
-# 会话与历史
 minimal-agent chat
+
+# 移除变更工具，或只预览不落盘
+minimal-agent run --read-only "审查这个项目"
+minimal-agent run --dry-run "修改 README.md 标题"
+
+# 在 stderr 输出 JSONL 运行事件
+minimal-agent run --events "查找发布说明"
+
+# 查看真实生效的能力与审计记录
+minimal-agent capabilities
 minimal-agent sessions
-minimal-agent history 20260808-120000-a1b2c3
+minimal-agent history SESSION_ID
+minimal-agent audit SESSION_ID --json
 
-# 查看或导出工具审计
-minimal-agent audit 20260808-120000-a1b2c3
-minimal-agent audit 20260808-120000-a1b2c3 --json
+# 查看和撤销一次文件事务
+minimal-agent changes
+minimal-agent change CHANGE_SET_ID
+minimal-agent undo CHANGE_SET_ID
 
-# 对比本机模型的工具使用能力
-minimal-agent eval --model qwen3:4b --model qwen3:8b
-minimal-agent eval --model qwen3:8b --json
+# 查看并校验执行凭证链
+minimal-agent receipts SESSION_ID --json
+minimal-agent verify SESSION_ID --head LAST_RECEIPT_HASH
 ```
 
-评测要求每个模型真正成功调用 `list_files`、`read_file`、`search_text`，并返回
-正确证据。任何一项失败都会产生非零退出码。它是快速兼容性检查，不是通用能力
-排行榜。所有模型统一使用只读策略、温度 `0`、最多四次请求/四次工具调用和 4096
-输出 token，避免继承无关的任务参数。
+交互式写入会对完整且有上限的 diff 请求一次批准；非交互环境会自动拒绝确认式写入。
+`--dry-run` 展示同样的 diff，但绝不修改文件。
 
 ## 架构
 
 ```mermaid
 flowchart LR
-    User["CLI 用户"] --> Loop["单一、受限的 Agent 循环"]
-    Loop <--> Model["Ollama 本地模型"]
-    Loop --> Read["3 个只读工具"]
-    Loop -. "仅 write_policy=confirm" .-> Write["write_file"]
+    User["CLI 或 Python 宿主"] --> Runtime["AgentRuntime"]
+    Runtime --> Policy["能力策略编译器"]
+    Policy --> Loop["受限 PydanticAI 循环"]
+    Loop <--> Model["Ollama 模型"]
+    Loop --> Read["3 个工作区只读工具"]
+    Loop --> Mutate["整文件写入 / 精确多文件编辑"]
+    Mutate --> Tx["预览 → 批准 → 再校验 → 提交 / 回滚"]
     Read --> Guard["工作区边界与资源上限"]
-    Write --> Preview["校验 + 统一 diff"]
-    Preview --> Approval{"单次批准？"}
-    Approval -->|是| Guard
-    Approval -->|否| Loop
+    Tx --> Guard
     Guard --> Files["workspace/"]
-    Loop --> Store["SQLite 会话与审计"]
+    Loop -. "可选显式白名单" .-> MCP["本机 MCP 服务"]
+    Runtime --> Store["SQLite 历史、审计、撤销快照、凭证"]
+    Runtime --> Events["结构化运行事件"]
 ```
 
-PydanticAI 负责受限的模型/工具循环；应用代码负责能力注册、文件系统边界、人工
-确认和持久化。模型无法在运行时自行增加工具。
-
-| 工具 | 有副作用 | 主要限制 |
-|---|---:|---|
-| `list_files` | 否 | 相对目录、递归列出、结果上限 |
-| `read_file` | 否 | UTF-8 文本、文件大小上限 |
-| `search_text` | 否 | 递归纯文本搜索、扫描文件数与结果上限 |
-| `write_file` | 是 | 可移除、diff、人工确认、原子替换 |
+PydanticAI 负责模型和工具迭代；本项目代码负责能力注册、工作区边界、变更事务、策略、
+持久化与凭证。模型无法在运行时自行增加工具或绕过缺失的 schema。
 
 ## 配置
 
-复制 `agent.example.toml` 为 `agent.toml`；后者已被 Git 忽略。
+复制 `agent.example.toml` 为被 Git 忽略的 `agent.toml`：
 
 ```toml
 [agent]
@@ -143,7 +136,7 @@ request_limit = 6
 tool_calls_limit = 8
 max_output_tokens = 2048
 temperature = 0.1
-write_policy = "confirm" # "confirm" 或 "deny"
+write_policy = "confirm" # "confirm"、"preview" 或 "deny"
 
 [paths]
 workspace = "workspace"
@@ -151,76 +144,117 @@ database = ".minimal-local-agent/state.db"
 
 [tools]
 max_file_bytes = 200000
-max_list_results = 200
-max_search_results = 100
-max_search_files = 500
+max_transaction_files = 8
+max_diff_chars = 40000
+max_mcp_result_chars = 100000
+
+[policy.tools]
+# search_text = "deny"
+# edit_files = "preview"
 ```
 
-相对路径以配置文件所在目录为基准。常用环境变量如下：
+所有标量配置都支持 `MLA_*` 环境变量覆盖，常用项包括 `MLA_MODEL`、
+`MLA_BASE_URL`、`MLA_WORKSPACE`、`MLA_DATABASE`、`MLA_WRITE_POLICY`、
+`MLA_DISABLED_TOOLS` 和各个 `MLA_MAX_*` 上限。相对路径以配置文件目录为基准。
 
-| 环境变量 | 含义 |
-|---|---|
-| `MLA_CONFIG` | 配置文件路径 |
-| `MLA_MODEL` | Ollama 模型名称 |
-| `MLA_BASE_URL` | Ollama OpenAI 兼容地址 |
-| `MLA_WORKSPACE` | Agent 可访问的工作区根目录 |
-| `MLA_DATABASE` | SQLite 文件路径 |
-| `MLA_WRITE_POLICY` | `confirm` 或 `deny` |
-| `MLA_REQUEST_LIMIT` | 单次任务最大模型请求数 |
-| `MLA_TOOL_CALLS_LIMIT` | 单次任务最大工具调用数 |
-| `MLA_MAX_OUTPUT_TOKENS` | 单次任务最大输出 token 数 |
-| `MLA_MAX_FILE_BYTES` | 单文件读写上限 |
-| `MLA_MAX_LIST_RESULTS` | 文件列表结果上限 |
-| `MLA_MAX_SEARCH_RESULTS` | 搜索匹配结果上限 |
-| `MLA_MAX_SEARCH_FILES` | 单次搜索扫描文件上限 |
+写工具只能是 `ask`、`preview` 或 `deny`，不能配置成绕过批准；只读和外部只读工具只能
+是 `allow` 或 `deny`。
+
+## 可选 MCP 客户端
+
+```bash
+python -m pip install -e ".[mcp]"
+```
+
+```toml
+[[mcp.servers]]
+name = "notes"
+url = "http://127.0.0.1:8000/mcp"
+allow_tools = ["search_notes", "read_note"]
+
+[policy.tools]
+mcp_notes_read_note = "deny"
+```
+
+模型看到的是 `mcp_notes_search_notes` 这类带前缀名称。v0.5 只接受 `localhost`、
+`127.0.0.1` 或 `::1`；关闭服务端指令、采样、交互请求、文件系统根目录、隐式工具暴露和
+远程 URL。工具结果有大小上限，审计仅保存参数名和参数哈希，不保存完整参数。
+
+白名单代表操作者确认这些工具是只读的。MCP 注解和服务端内容本身不是安全边界，因此只应
+连接可信本机服务，并保持最小白名单。
+
+## Python 嵌入与事件
+
+```python
+from minimal_local_agent import AgentRuntime
+from minimal_local_agent.config import Settings
+
+runtime = AgentRuntime(Settings.load("agent.toml"))
+outcome = runtime.run(
+    "总结 fact.txt",
+    event_handler=lambda event: print(event.to_dict()),
+)
+print(outcome.response)
+print(outcome.receipt_hash)
+```
+
+v0.5 事件包括 `run.started`、`tool.completed`、`mutation.preview`、
+`mutation.applied`、`run.completed` 和 `run.failed`。宿主可通过 `model_factory` 替换模型
+构造，也可显式传入自己的工具集。观察回调失败不会改变 Agent 运行语义，错误会出现在
+`outcome.event_handler_errors` 中。
+
+执行凭证记录端点/提示词/回复哈希、用量、有效能力清单和适合审计的工具元数据，并按会话
+组成哈希链。内部校验能发现断链或未重算哈希的内容修改；把最后一个哈希另存到 SQLite
+之外，再用 `verify --head` 校验，还能发现整链重写或截断。如果没有外部 head，能够写数据库
+的人也能重算整条链。凭证不等同于数字身份或远程证明。
+
+## 模型评测
+
+```bash
+# 内置 list/read/search 隔离测试
+minimal-agent eval --model qwen3:4b --model qwen3:8b
+
+# 外部版本化数据集
+minimal-agent eval --dataset evals/adversarial.json --model qwen3:8b
+```
+
+JSON schema 标识为 `minimal-local-agent.eval-dataset.v1`。每个用例可创建隔离文件，并声明
+预期工具、状态、回复片段和禁止工具。它是兼容性与回归测试，不是通用智能排行榜。
 
 ## 安全边界
 
-即使模型在本地运行，模型输出也始终视为不可信输入：
+运行时强制执行：
 
-1. 只允许配置工作区内的相对路径。
-2. 先解析符号链接，再检查是否越界。
-3. 模型、工具、输出、文件和搜索均有固定上限。
-4. `deny` 策略会从工具表中移除 `write_file`。
-5. 每次写入先校验并展示有长度上限的统一 diff。
-6. 非 TTY 环境自动拒绝写入。
-7. 批准后再次校验，再通过同目录临时文件原子替换。
-8. 不提供删除、Shell、Python 或网络工具。
-9. 本地记录运行结果和工具事件，便于复核。
+1. 所有相对路径都限制在一个解析后的工作区，包含符号链接检查；
+2. 模型请求、工具调用、输出、文件、搜索、事务、diff 和 MCP 结果都有上限；
+3. 被拒绝的能力从模型工具表中机械移除；
+4. 精确唯一替换、可选源文件哈希和陈旧状态检查；
+5. 变更前展示统一 diff，随后原子写入，失败时回滚；
+6. 只有当前文件哈希仍匹配时才允许撤销；
+7. 内核没有 Shell、进程执行、删除工具、浏览器或远程 MCP；
+8. 本地保存历史、审计元数据、结构化事件与可校验凭证。
 
-不要把用户主目录、多个项目的上级目录或包含密钥的宽泛目录配置成工作区。远程
-Ollama 地址也会改变隐私边界。详见 [SECURITY.md](SECURITY.md)。
+SQLite 消息历史可能包含模型读过的文件内容；撤销快照会保存变更前文本，请保护数据库。
+不要把用户主目录或包含密钥的宽泛目录设置为工作区。详见 [SECURITY.md](SECURITY.md)。
 
-审计事件记录工具名、状态、路径、查询、数量、字节数和 diff 哈希，不重复保存
-完整文件内容；但模型消息历史可能包含读取工具返回的内容。
-
-## 开发与测试
+## 开发
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,mcp]"
 ruff format --check .
 ruff check .
 pytest
 ```
 
-单元测试不需要 Ollama。使用 `minimal-agent doctor` 检查连接，使用
-`minimal-agent eval` 验证真实模型与工具集成。
+单元测试不需要 Ollama；`minimal-agent doctor` 检查真实服务，`minimal-agent eval` 测试真实
+本地模型。
 
-## 明确不做与后续方向
+## 有意不做的事情
 
-本项目暂不追求完整 Agent 平台，因此没有流式输出、GUI、MCP、浏览器/Shell、
-语义长期记忆和多 Agent 编排。
+核心不以“万能个人助理”为目标。Shell/浏览器工具、GUI、语义记忆、定时调度、后台自治和
+多 Agent 编排不属于 v0.5。后续更适合优先增强凭证签名/导出、上下文压缩、确定性安全评测，
+以及不扩大默认信任边界的适配器扩展。
 
-后续优先项：
-
-- 扩充对抗性、多语言本地模型评测；
-- 在保持完整审计的前提下加入流式输出；
-- 长会话上下文压缩；
-- 带明确白名单的可选只读 MCP；
-- 在全文件写入稳定后增加补丁式编辑。
-
-只有出现可测量需求时，才引入大型依赖和高权限工具。
-
-## 许可证
+## License
 
 [MIT](LICENSE)

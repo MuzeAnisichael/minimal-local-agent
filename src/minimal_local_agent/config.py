@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,7 +12,61 @@ from urllib.parse import urlparse
 
 DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_BASE_URL = "http://localhost:11434/v1"
-WRITE_POLICIES = frozenset({"confirm", "deny"})
+WRITE_POLICIES = frozenset({"confirm", "deny", "preview"})
+POLICY_DECISIONS = frozenset({"allow", "ask", "deny", "preview"})
+READ_TOOLS = frozenset({"list_files", "read_file", "search_text"})
+WRITE_TOOLS = frozenset({"write_file", "edit_files"})
+_MCP_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+_MCP_TOOL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+
+
+@dataclass(frozen=True, slots=True)
+class MCPServerSettings:
+    """One loopback MCP endpoint with an explicit read-only tool allowlist."""
+
+    name: str
+    url: str
+    allow_tools: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not _MCP_NAME.fullmatch(self.name):
+            raise ValueError(
+                "MCP server name must start with a letter and contain only "
+                "letters, numbers, underscores, or hyphens"
+            )
+        parsed = urlparse(self.url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError(f"MCP server {self.name} must use an http(s) URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError(
+                f"MCP server {self.name} URL cannot contain credentials, query, "
+                "or fragment"
+            )
+        if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError(f"MCP server {self.name} must be loopback-only in v0.5")
+        if not self.allow_tools:
+            raise ValueError(f"MCP server {self.name} requires allow_tools")
+        if len(self.allow_tools) != len(set(self.allow_tools)):
+            raise ValueError(f"MCP server {self.name} has duplicate allow_tools")
+        if any(not tool.strip() for tool in self.allow_tools):
+            raise ValueError(f"MCP server {self.name} has an empty tool name")
+        for tool in self.allow_tools:
+            if not _MCP_TOOL_NAME.fullmatch(tool):
+                raise ValueError(
+                    f"MCP tool {tool!r} must be an OpenAI-compatible function name"
+                )
+            if len(f"{self.prefix}{tool}") > 64:
+                raise ValueError(
+                    f"Prefixed MCP tool name is longer than 64 characters: {tool}"
+                )
+
+    @property
+    def prefix(self) -> str:
+        return f"mcp_{self.name.replace('-', '_')}_"
+
+    @property
+    def visible_tools(self) -> tuple[str, ...]:
+        return tuple(f"{self.prefix}{tool}" for tool in self.allow_tools)
 
 
 def _path(value: str | Path, base_dir: Path) -> Path:
@@ -50,6 +105,11 @@ class Settings:
     max_list_results: int = 200
     max_search_results: int = 100
     max_search_files: int = 500
+    max_transaction_files: int = 8
+    max_diff_chars: int = 40_000
+    max_mcp_result_chars: int = 100_000
+    tool_policies: tuple[tuple[str, str], ...] = ()
+    mcp_servers: tuple[MCPServerSettings, ...] = ()
 
     def __post_init__(self) -> None:
         parsed = urlparse(self.base_url)
@@ -63,6 +123,9 @@ class Settings:
             "max_list_results",
             "max_search_results",
             "max_search_files",
+            "max_transaction_files",
+            "max_diff_chars",
+            "max_mcp_result_chars",
         ):
             if getattr(self, name) < 1:
                 raise ValueError(f"{name} must be at least 1")
@@ -71,6 +134,24 @@ class Settings:
         if self.write_policy not in WRITE_POLICIES:
             allowed = ", ".join(sorted(WRITE_POLICIES))
             raise ValueError(f"write_policy must be one of: {allowed}")
+        policy_names = [name for name, _decision in self.tool_policies]
+        if len(policy_names) != len(set(policy_names)):
+            raise ValueError("Tool policy names must be unique")
+        for name, decision in self.tool_policies:
+            if not name.strip() or decision not in POLICY_DECISIONS:
+                raise ValueError(f"Invalid tool policy: {name!r}={decision!r}")
+            if name in WRITE_TOOLS and decision == "allow":
+                raise ValueError(f"Write tool {name} cannot bypass approval")
+            if name not in WRITE_TOOLS and decision not in {"allow", "deny"}:
+                raise ValueError(f"Read tool {name} only supports allow or deny")
+        server_names = [server.name for server in self.mcp_servers]
+        if len(server_names) != len(set(server_names)):
+            raise ValueError("MCP server names must be unique")
+        visible_tools = [
+            tool for server in self.mcp_servers for tool in server.visible_tools
+        ]
+        if len(visible_tools) != len(set(visible_tools)):
+            raise ValueError("MCP tool names collide after prefixing")
 
     @classmethod
     def load(cls, config_path: str | Path | None = None) -> Settings:
@@ -92,8 +173,44 @@ class Settings:
         agent = raw.get("agent", {})
         paths = raw.get("paths", {})
         tools = raw.get("tools", {})
-        if not all(isinstance(section, dict) for section in (agent, paths, tools)):
-            raise ValueError("agent, paths, and tools must be TOML tables")
+        policy = raw.get("policy", {})
+        mcp = raw.get("mcp", {})
+        if not all(
+            isinstance(section, dict) for section in (agent, paths, tools, policy, mcp)
+        ):
+            raise ValueError("agent, paths, tools, policy, and mcp must be TOML tables")
+        policy_tools = policy.get("tools", {})
+        if not isinstance(policy_tools, dict):
+            raise ValueError("policy.tools must be a TOML table")
+
+        tool_policies = {
+            str(name).strip(): str(decision).strip().casefold()
+            for name, decision in policy_tools.items()
+        }
+        disabled = os.getenv("MLA_DISABLED_TOOLS", "")
+        for name in disabled.split(","):
+            if name.strip():
+                tool_policies[name.strip()] = "deny"
+
+        raw_servers = mcp.get("servers", [])
+        if not isinstance(raw_servers, list) or not all(
+            isinstance(server, dict) for server in raw_servers
+        ):
+            raise ValueError("mcp.servers must be an array of TOML tables")
+        mcp_servers: list[MCPServerSettings] = []
+        for server in raw_servers:
+            allow_tools = server.get("allow_tools", [])
+            if not isinstance(allow_tools, list) or not all(
+                isinstance(tool, str) for tool in allow_tools
+            ):
+                raise ValueError("MCP allow_tools must be an array of strings")
+            mcp_servers.append(
+                MCPServerSettings(
+                    name=str(server.get("name", "")).strip(),
+                    url=str(server.get("url", "")).strip().rstrip("/"),
+                    allow_tools=tuple(tool.strip() for tool in allow_tools),
+                )
+            )
 
         model = str(_env("MLA_MODEL", agent.get("model", DEFAULT_MODEL), str)).strip()
         base_url = str(
@@ -146,4 +263,22 @@ class Settings:
             max_search_files=_env(
                 "MLA_MAX_SEARCH_FILES", tools.get("max_search_files", 500), int
             ),
+            max_transaction_files=_env(
+                "MLA_MAX_TRANSACTION_FILES",
+                tools.get("max_transaction_files", 8),
+                int,
+            ),
+            max_diff_chars=_env(
+                "MLA_MAX_DIFF_CHARS", tools.get("max_diff_chars", 40_000), int
+            ),
+            max_mcp_result_chars=_env(
+                "MLA_MAX_MCP_RESULT_CHARS",
+                tools.get("max_mcp_result_chars", 100_000),
+                int,
+            ),
+            tool_policies=tuple(sorted(tool_policies.items())),
+            mcp_servers=tuple(mcp_servers),
         )
+
+
+__all__ = ["MCPServerSettings", "Settings"]

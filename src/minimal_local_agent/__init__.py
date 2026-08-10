@@ -1,5 +1,12 @@
 """A small, auditable local-first agent."""
 
-__version__ = "0.2.0"
+from minimal_local_agent.runtime import AgentRuntime, RunOutcome, RuntimeEvent
 
-__all__ = ["__version__"]
+__version__ = "0.5.0"
+
+__all__ = [
+    "AgentRuntime",
+    "RunOutcome",
+    "RuntimeEvent",
+    "__version__",
+]

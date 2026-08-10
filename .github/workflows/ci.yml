@@ -28,3 +28,18 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest
+
+  mcp-extra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install optional MCP client
+        run: python -m pip install -e ".[dev,mcp]"
+      - name: Import MCP integration
+        run: python -c "from minimal_local_agent.mcp import build_mcp_bundle"
+      - name: Test MCP integration
+        run: pytest tests/test_mcp.py

@@ -5,7 +5,7 @@ request_limit = 6
 tool_calls_limit = 8
 max_output_tokens = 2048
 temperature = 0.1
-write_policy = "confirm" # "confirm" or "deny"
+write_policy = "confirm" # "confirm", "preview", or "deny"
 
 [paths]
 workspace = "workspace"
@@ -16,3 +16,19 @@ max_file_bytes = 200000
 max_list_results = 200
 max_search_results = 100
 max_search_files = 500
+max_transaction_files = 8
+max_diff_chars = 40000
+max_mcp_result_chars = 100000
+
+# Optional v0.5 MCP clients are loopback-only and expose only explicitly named
+# tools. Install support with: pip install -e ".[mcp]"
+# [[mcp.servers]]
+# name = "notes"
+# url = "http://127.0.0.1:8000/mcp"
+# allow_tools = ["search_notes", "read_note"]
+
+[policy.tools]
+# search_text = "deny"
+# edit_files = "preview"
+# Add a prefixed MCP tool here to disable it independently.
+# mcp_notes_read_note = "deny"

@@ -214,6 +214,40 @@ class WorkspaceTools:
             diff_truncated=truncated,
         )
 
+    def preview_delete(
+        self,
+        path: str,
+        *,
+        max_diff_chars: int = 12_000,
+    ) -> WritePreview:
+        """Preview deletion for an internal undo operation."""
+
+        target = self.guard.resolve(path, must_exist=True)
+        if not target.is_file():
+            raise IsADirectoryError(f"Not a file: {path}")
+        previous = self.read_file(path)
+        relative = self.guard.relative(target)
+        diff = "\n".join(
+            difflib.unified_diff(
+                _visible_diff_lines(previous),
+                [],
+                fromfile=f"a/{relative}",
+                tofile="/dev/null",
+                lineterm="",
+            )
+        )
+        truncated = len(diff) > max_diff_chars
+        if truncated:
+            diff = f"{diff[:max_diff_chars]}\n... [diff truncated]"
+        return WritePreview(
+            path=relative,
+            bytes=0,
+            overwrite=True,
+            existed=True,
+            diff=diff,
+            diff_truncated=truncated,
+        )
+
     def write_file(self, path: str, content: str, *, overwrite: bool = False) -> int:
         target = self.guard.resolve(path)
         if target.exists() and target.is_dir():
@@ -247,6 +281,19 @@ class WorkspaceTools:
             if temporary_name and Path(temporary_name).exists():
                 Path(temporary_name).unlink()
         return len(encoded)
+
+    def restore_file(self, path: str, content: str | None) -> None:
+        """Restore a snapshot; deletion is reserved for rollback and explicit undo."""
+
+        target = self.guard.resolve(path)
+        if content is None:
+            if not target.exists():
+                return
+            if not target.is_file():
+                raise IsADirectoryError(f"Cannot remove a directory: {path}")
+            target.unlink()
+            return
+        self.write_file(path, content, overwrite=target.exists())
 
 
 __all__ = ["WorkspaceSecurityError", "WorkspaceTools", "WritePreview"]
