@@ -5,6 +5,7 @@ import pytest
 from pydantic_ai import RunContext
 from pydantic_ai.models.test import TestModel
 
+from minimal_local_agent import ReadTool as PublicReadTool
 from minimal_local_agent.agent import AgentDependencies, AgentRuntime
 from minimal_local_agent.config import Settings
 from minimal_local_agent.policy import PolicyEngine
@@ -17,6 +18,7 @@ def _example(_ctx: object, path: str) -> int:
 
 
 def test_read_tool_requires_a_distinct_documented_name() -> None:
+    assert PublicReadTool is ReadTool
     assert ReadTool("line_count", _example).name == "line_count"
     for name in ("write_file", "mcp_notes_search", "bad-name", ""):
         with pytest.raises(ValueError):
