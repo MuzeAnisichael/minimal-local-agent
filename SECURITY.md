@@ -29,12 +29,21 @@ The runtime therefore:
   allowlists and no server instructions, sampling, elicitation, or roots;
 - records runs, tool metadata, reversible snapshots, and hash-chained execution
   receipts in local SQLite.
+- serves the optional Web console only on loopback, with Host and same-origin
+  checks, and never permits it to approve writes.
 
 Do not point the workspace at a home directory, repository collection, or other
 broad location containing secrets. Review model-requested writes before approving
 them; a diff preview is not a guarantee that the model's change is correct. A
-remote Ollama URL changes the privacy boundary because prompts and tool
-results then leave the local machine.
+remote model URL changes the privacy boundary because prompts and tool results
+then leave the local machine. A compatible official API or relay is remote even
+when accessed through a locally configured endpoint.
+
+The optional `openai-compatible` adapter reads a secret from the environment
+variable named in local `api_key_env`; never put a key in `agent.toml` or a URL.
+Remote keyed connections must use HTTPS. Keep local `agent.toml` and `.env` files
+out of Git. The Web console is intended only for the operator's own machine;
+do not reverse-proxy it or expose it on a network interface.
 
 ## MCP boundary
 
@@ -46,7 +55,7 @@ that writes, executes, authenticates, purchases, or sends messages.
 
 MCP audit rows store argument names and a canonical argument hash, not full
 arguments or full results. This reduces duplication but does not prevent the remote
-Ollama model from seeing tool results when `base_url` is non-local.
+model service from seeing tool results when `base_url` is non-local.
 
 ## Local sensitive data
 

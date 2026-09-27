@@ -11,6 +11,8 @@ dist/
 
 # Local configuration and state
 agent.toml
+.env
+.env.*
 .minimal-local-agent/
 
 # Agent workspace data

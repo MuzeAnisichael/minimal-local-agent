@@ -12,12 +12,14 @@ from urllib.parse import urlparse
 
 DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_BASE_URL = "http://localhost:11434/v1"
+MODEL_PROVIDERS = frozenset({"ollama", "openai-compatible"})
 WRITE_POLICIES = frozenset({"confirm", "deny", "preview"})
 POLICY_DECISIONS = frozenset({"allow", "ask", "deny", "preview"})
 READ_TOOLS = frozenset({"list_files", "read_file", "search_text"})
 WRITE_TOOLS = frozenset({"write_file", "edit_files"})
 _MCP_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _MCP_TOOL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +94,8 @@ class Settings:
 
     model: str = DEFAULT_MODEL
     base_url: str = DEFAULT_BASE_URL
+    provider: str = "ollama"
+    api_key_env: str | None = None
     workspace: Path = field(default_factory=lambda: Path("workspace").resolve())
     database: Path = field(
         default_factory=lambda: Path(".minimal-local-agent/state.db").resolve()
@@ -115,6 +119,20 @@ class Settings:
         parsed = urlparse(self.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("base_url must be a valid http(s) URL")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("base_url cannot contain credentials, query, or fragment")
+        if self.provider not in MODEL_PROVIDERS:
+            raise ValueError(
+                f"provider must be one of: {', '.join(sorted(MODEL_PROVIDERS))}"
+            )
+        if self.api_key_env is not None and not _ENV_NAME.fullmatch(self.api_key_env):
+            raise ValueError("api_key_env must be an environment variable name")
+        if (
+            self.api_key_env
+            and parsed.scheme != "https"
+            and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+        ):
+            raise ValueError("API keys require HTTPS outside loopback endpoints")
         for name in (
             "request_limit",
             "tool_calls_limit",
@@ -222,6 +240,19 @@ class Settings:
         return cls(
             model=model,
             base_url=base_url,
+            provider=str(_env("MLA_PROVIDER", agent.get("provider", "ollama"), str))
+            .strip()
+            .casefold(),
+            api_key_env=(
+                str(
+                    _env(
+                        "MLA_API_KEY_ENV",
+                        agent.get("api_key_env", ""),
+                        str,
+                    )
+                ).strip()
+                or None
+            ),
             workspace=_path(
                 _env("MLA_WORKSPACE", paths.get("workspace", "workspace"), str),
                 base_dir,
@@ -281,4 +312,4 @@ class Settings:
         )
 
 
-__all__ = ["MCPServerSettings", "Settings"]
+__all__ = ["MCPServerSettings", "MODEL_PROVIDERS", "Settings"]

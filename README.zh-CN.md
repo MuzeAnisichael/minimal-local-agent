@@ -5,10 +5,11 @@
 [English](README.md) · [同类项目对比](docs/COMPARISON.zh-CN.md) ·
 [验证记录](docs/VALIDATION.md) · [安全策略](SECURITY.md)
 
-Minimal Local Agent 通过 PydanticAI 调用 Ollama，将文件工具限制在一个工作区内，并用
-SQLite 保存会话、审计事件、可撤销变更和哈希链执行凭证。
+Minimal Local Agent 默认通过 PydanticAI 调用 Ollama，也可显式接入兼容 OpenAI Chat
+Completions 的服务。文件工具被限制在一个工作区内，SQLite 保存会话、审计事件、
+可撤销变更和哈希链执行凭证。
 
-当前版本为 `0.5.0` Alpha。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为
+当前版本为 `0.6.0` Alpha。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为
 不可信输入。
 
 ## 核心差异
@@ -22,11 +23,13 @@ SQLite 保存会话、审计事件、可撤销变更和哈希链执行凭证。
 
 更完整的取舍见[同类项目对比](docs/COMPARISON.zh-CN.md)。
 
-## v0.5 能力
+## v0.6 能力
 
 | 范围 | 已实现 |
 |---|---|
 | 运行时 | 稳定的 `AgentRuntime` API、可替换模型工厂、受限单 Agent 循环 |
+| 模型 | 默认 Ollama；可选择兼容 OpenAI Chat Completions 的端点 |
+| 界面 | 本地 Web 控制台与 CLI；Web 任务仅可只读或预览 |
 | 只读工具 | `list_files`、`read_file`、`search_text` |
 | 变更工具 | `write_file`、事务式 `edit_files` |
 | 变更安全 | 统一 diff、确认/预览/拒绝、陈旧检查、回滚、撤销 |
@@ -37,7 +40,8 @@ SQLite 保存会话、审计事件、可撤销变更和哈希链执行凭证。
 
 ## 快速开始
 
-需要 Python 3.11+、正在运行的 [Ollama](https://ollama.com/) 和支持工具调用的模型。
+需要 Python 3.11+ 和支持工具调用的模型。以下快速开始采用默认的
+[Ollama](https://ollama.com/)。
 
 ### Windows PowerShell
 
@@ -51,6 +55,8 @@ ollama pull qwen3.5:9b
 Copy-Item agent.example.toml agent.toml
 minimal-agent doctor
 minimal-agent chat
+# 也可以打开本地 Web 控制台
+minimal-agent web
 ```
 
 ### macOS / Linux
@@ -65,9 +71,23 @@ ollama pull qwen3.5:9b
 cp agent.example.toml agent.toml
 minimal-agent doctor
 minimal-agent chat
+# 也可以打开本地 Web 控制台
+minimal-agent web
 ```
 
 只把允许 Agent 访问的文件放入 `workspace/`。
+
+## 本地 Web 控制台
+
+启动浏览器工作台，然后访问 `http://127.0.0.1:8765`：
+
+```bash
+minimal-agent web
+```
+
+Web 控制台支持只读运行、不会落盘的变更预览、会话历史、运行事件和收据链状态。
+服务只监听本机，并且不会开放需要确认的真实写入；如需查看完整差异并批准写入，
+请使用交互式 CLI。它适配窄屏，但定位仍是本机界面，不应作为公网服务暴露。
 
 ## 常用命令
 
@@ -106,10 +126,10 @@ minimal-agent verify SESSION_ID --head LAST_RECEIPT_HASH
 
 ```mermaid
 flowchart LR
-    User["CLI 或 Python 宿主"] --> Runtime["AgentRuntime"]
+    User["CLI、本地 Web 或 Python 宿主"] --> Runtime["AgentRuntime"]
     Runtime --> Policy["能力策略编译器"]
     Policy --> Loop["受限 PydanticAI 循环"]
-    Loop <--> Model["Ollama 模型"]
+    Loop <--> Model["Ollama 或兼容端点"]
     Loop --> Read["3 个工作区只读工具"]
     Loop --> Mutate["整文件写入 / 精确多文件编辑"]
     Mutate --> Tx["预览 → 批准 → 再校验 → 提交 / 回滚"]
@@ -130,6 +150,7 @@ PydanticAI 负责模型和工具迭代；本项目代码负责能力注册、工
 
 ```toml
 [agent]
+provider = "ollama"
 model = "qwen3.5:9b"
 base_url = "http://localhost:11434/v1"
 request_limit = 6
@@ -153,9 +174,34 @@ max_mcp_result_chars = 100000
 # edit_files = "preview"
 ```
 
-所有标量配置都支持 `MLA_*` 环境变量覆盖，常用项包括 `MLA_MODEL`、
-`MLA_BASE_URL`、`MLA_WORKSPACE`、`MLA_DATABASE`、`MLA_WRITE_POLICY`、
+所有标量配置都支持 `MLA_*` 环境变量覆盖，常用项包括 `MLA_PROVIDER`、
+`MLA_MODEL`、`MLA_BASE_URL`、`MLA_API_KEY_ENV`、`MLA_WORKSPACE`、
+`MLA_DATABASE`、`MLA_WRITE_POLICY`、
 `MLA_DISABLED_TOOLS` 和各个 `MLA_MAX_*` 上限。相对路径以配置文件目录为基准。
+
+### 接入其他模型服务
+
+本地服务器、官方 API 或中转站只要提供兼容 OpenAI Chat Completions 的接口，
+就可以在**被 Git 忽略的** `agent.toml` 中配置：
+
+```toml
+[agent]
+provider = "openai-compatible"
+model = "your-tool-capable-model"
+base_url = "https://your-provider.example/v1"
+api_key_env = "MODEL_API_KEY"
+```
+
+在本机环境变量 `MODEL_API_KEY` 中放入实际密钥，然后运行 `minimal-agent doctor`
+及一个只读任务。`api_key_env` 填的是**环境变量名称**，不是密钥。无密钥的本地兼容
+服务可省略它，使用回环或私有网络地址。远程端点需要密钥；带密钥的非回环端点必须
+使用 HTTPS。`doctor` 只探测 `/models`，不会发起生成请求；没有模型列表接口的
+服务可能显示“未验证”，需通过任务验证。
+
+此适配器面向 Chat Completions 和工具调用，并不保证支持每个服务的专有扩展；
+模型不支持兼容工具调用时，任务可能失败。真实地址、密钥和个人默认模型只保存在
+本地配置或环境变量中。使用远程服务时，提示词和工具结果（包括 Agent 读取的
+工作区内容）会发送给该服务。
 
 写工具只能是 `ask`、`preview` 或 `deny`，不能配置成绕过批准；只读和外部只读工具只能
 是 `allow` 或 `deny`。
@@ -176,7 +222,7 @@ allow_tools = ["search_notes", "read_note"]
 mcp_notes_read_note = "deny"
 ```
 
-模型看到的是 `mcp_notes_search_notes` 这类带前缀名称。v0.5 只接受 `localhost`、
+模型看到的是 `mcp_notes_search_notes` 这类带前缀名称。MCP 客户端只接受 `localhost`、
 `127.0.0.1` 或 `::1`；关闭服务端指令、采样、交互请求、文件系统根目录、隐式工具暴露和
 远程 URL。工具结果有大小上限，审计仅保存参数名和参数哈希，不保存完整参数。
 
@@ -251,8 +297,8 @@ pytest
 
 ## 有意不做的事情
 
-核心不以“万能个人助理”为目标。Shell/浏览器工具、GUI、语义记忆、定时调度、后台自治和
-多 Agent 编排不属于 v0.5。后续更适合优先增强凭证签名/导出、上下文压缩、确定性安全评测，
+核心不以“万能个人助理”为目标。Shell/浏览器工具、语义记忆、定时调度、后台自治和
+多 Agent 编排不属于 v0.6。后续更适合优先增强凭证签名/导出、上下文压缩、确定性安全评测，
 以及不扩大默认信任边界的适配器扩展。
 
 ## License

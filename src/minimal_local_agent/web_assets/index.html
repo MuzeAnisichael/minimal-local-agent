@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Minimal Local Agent 的本地、安全、可审计 Web 控制台。"
+    />
+    <title>Minimal Local Agent · 本地工作台</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="会话导航">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"><span>ML</span></div>
+          <div>
+            <strong>Minimal</strong>
+            <span>Local Agent</span>
+          </div>
+        </div>
+
+        <button class="new-session" id="new-session" type="button">
+          <span aria-hidden="true">＋</span>
+          新建会话
+        </button>
+
+        <div class="sidebar-section">
+          <div class="section-label">
+            <span>最近会话</span>
+            <span id="session-count">0</span>
+          </div>
+          <div class="session-list" id="session-list">
+            <p class="sidebar-empty">运行第一个任务后，会话会保存在这里。</p>
+          </div>
+        </div>
+
+        <div class="trust-note">
+          <span class="trust-icon" aria-hidden="true">✓</span>
+          <div>
+            <strong>仅限本机</strong>
+            <span>页面不接受远程连接</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">LOCAL WORKBENCH</p>
+            <h1>本地工作台</h1>
+          </div>
+          <div class="connection" id="connection" role="status" aria-live="polite">
+            <span class="connection-dot" aria-hidden="true"></span>
+            <span id="connection-label">正在检查模型…</span>
+          </div>
+        </header>
+
+        <div class="workbench">
+          <section class="agent-panel" aria-labelledby="conversation-title">
+            <header class="panel-heading">
+              <div>
+                <span class="overline">ACTIVE SESSION</span>
+                <h2 id="conversation-title">和工作区对话</h2>
+              </div>
+              <div class="session-id" id="session-id">新会话</div>
+            </header>
+
+            <div
+              class="conversation"
+              id="conversation"
+              role="log"
+              aria-live="polite"
+              aria-label="会话内容"
+            >
+              <div class="welcome" id="welcome">
+                <div class="welcome-index">01</div>
+                <h3>把任务交给 Agent，从这里开始。</h3>
+                <p>
+                  文件范围由工作区和工具权限控制。任务内容会发送到你配置的模型服务；
+                  可以先只读分析，或预览建议修改而不写入文件。
+                </p>
+                <div class="suggestions" aria-label="任务示例">
+                  <button type="button" data-prompt="概览工作区，并告诉我最重要的三个文件。">
+                    概览工作区
+                    <span aria-hidden="true">↗</span>
+                  </button>
+                  <button type="button" data-prompt="搜索工作区里的 TODO 和 FIXME，并按优先级总结。">
+                    查找待办项
+                    <span aria-hidden="true">↗</span>
+                  </button>
+                  <button type="button" data-prompt="阅读 README 文件，指出表达不清或缺失的内容。">
+                    审查 README
+                    <span aria-hidden="true">↗</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <form class="composer" id="composer">
+              <label class="sr-only" for="prompt">输入任务</label>
+              <textarea
+                id="prompt"
+                name="prompt"
+                rows="3"
+                maxlength="20000"
+                placeholder="例如：概览工作区，并告诉我应该先处理什么…"
+                required
+              ></textarea>
+              <div class="composer-footer">
+                <fieldset class="mode-switch">
+                  <legend class="sr-only">运行模式</legend>
+                  <label>
+                    <input type="radio" name="mode" value="read" checked />
+                    <span>只读</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="mode" value="preview" />
+                    <span>变更预览</span>
+                  </label>
+                </fieldset>
+                <div class="composer-actions">
+                  <span class="shortcut">Ctrl ↵</span>
+                  <button class="send-button" id="send-button" type="submit">
+                    <span id="send-label">运行任务</span>
+                    <span class="send-arrow" aria-hidden="true">→</span>
+                  </button>
+                </div>
+              </div>
+              <p class="mode-help" id="mode-help">
+                只读模式不会向模型开放任何文件写入工具。
+              </p>
+            </form>
+          </section>
+
+          <aside class="inspector" aria-label="运行信息">
+            <section class="inspector-section runtime-section">
+              <div class="inspector-title">
+                <span>运行环境</span>
+                <span class="version" id="version">v—</span>
+              </div>
+              <dl class="runtime-grid">
+                <div>
+                  <dt>模型</dt>
+                  <dd id="model-name">载入中</dd>
+                </div>
+                <div>
+                  <dt>工作区</dt>
+                  <dd id="workspace-name" title="">载入中</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="inspector-section boundary-section">
+              <div class="inspector-title">
+                <span>当前边界</span>
+                <span class="boundary-state" id="boundary-state">READ ONLY</span>
+              </div>
+              <ul class="boundary-list" id="boundary-list">
+                <li><span>文件读取</span><b>允许</b></li>
+                <li><span>文件写入</span><b>移除</b></li>
+                <li><span>Shell / 删除</span><b>不可用</b></li>
+              </ul>
+            </section>
+
+            <section class="inspector-section activity-section">
+              <div class="inspector-title">
+                <span>最近一次运行</span>
+                <span id="activity-count">0 EVENTS</span>
+              </div>
+              <div class="activity-list" id="activity-list">
+                <div class="activity-empty">
+                  <span aria-hidden="true">⌁</span>
+                  <p>工具调用和预览会显示在这里。</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="receipt" id="receipt" hidden>
+              <div>
+                <span>执行收据</span>
+                <strong id="receipt-state">已记录</strong>
+              </div>
+              <code id="receipt-hash"></code>
+            </section>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

@@ -355,7 +355,10 @@ class AuditStore:
         with self._connection() as connection:
             rows = connection.execute(
                 """
-                SELECT s.id, s.created_at, s.updated_at, COUNT(r.id) AS run_count
+                SELECT s.id, s.created_at, s.updated_at, COUNT(r.id) AS run_count,
+                       (SELECT prompt FROM runs
+                        WHERE session_id = s.id ORDER BY id DESC LIMIT 1)
+                       AS last_prompt
                 FROM sessions AS s
                 LEFT JOIN runs AS r ON r.session_id = s.id
                 GROUP BY s.id

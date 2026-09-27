@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here.
 
+## [0.6.0] - 2026-09-28
+
+### Added
+
+- A dependency-free, loopback-only local Web console with read-only and
+  preview-only tasks, session history, run events, and receipt status.
+- An explicit `openai-compatible` model provider for local servers, official
+  APIs, and relay services implementing Chat Completions. API keys are read from
+  a named environment variable and are never stored in TOML settings.
+- Provider-neutral model connectivity checks shared by the CLI and Web console.
+- Web and provider regression tests, including failure-session recovery.
+
+### Changed
+
+- The Web console displays effective capabilities and keeps session history
+  accessible on small screens.
+- Session lists include the latest prompt for easier navigation.
+- Public example configuration remains Ollama-based; actual service addresses,
+  credentials, and personal default models belong in ignored local settings.
+
+### Security
+
+- Web runs cannot approve file writes and the server only binds to loopback.
+- API key URLs and insecure remote HTTP connections with keys are rejected.
+- `.env` files are ignored by Git.
+
 ## [0.5.0] - 2026-08-10
 
 ### Added
@@ -72,3 +98,4 @@ All notable changes to this project are documented here.
 [0.2.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/MuzeAnisichael/minimal-local-agent/releases/tag/v0.1.0
 [0.5.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.2.0...v0.5.0
+[0.6.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.5.0...v0.6.0

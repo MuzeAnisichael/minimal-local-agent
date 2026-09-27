@@ -10,10 +10,16 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.11"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,6 +34,22 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build wheel
+        run: python -m pip wheel --no-deps --wheel-dir dist .
+      - name: Check bundled Web assets
+        run: >-
+          python -c "import glob, zipfile; wheels=glob.glob('dist/*.whl');
+          assert len(wheels)==1; names=zipfile.ZipFile(wheels[0]).namelist();
+          assert all(any(name.endswith('/web_assets/'+asset) for name in names)
+          for asset in ('index.html','app.css','app.js'))"
 
   mcp-extra:
     runs-on: ubuntu-latest

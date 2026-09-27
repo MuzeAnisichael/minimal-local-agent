@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import urllib.error
-import urllib.request
 from collections.abc import Sequence
 from dataclasses import replace
 
@@ -14,6 +12,7 @@ from minimal_local_agent import __version__
 from minimal_local_agent.config import Settings
 from minimal_local_agent.evals import evaluate_model
 from minimal_local_agent.events import RuntimeEvent
+from minimal_local_agent.models import probe_model
 from minimal_local_agent.policy import PolicyEngine
 from minimal_local_agent.runtime import AgentRuntime
 from minimal_local_agent.store import AuditStore
@@ -31,7 +30,7 @@ def _confirm(action: str, detail: str) -> bool:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="minimal-agent",
-        description="A minimal, auditable local agent powered by Ollama.",
+        description="A minimal, auditable local-first agent.",
     )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument(
@@ -79,7 +78,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Validate and preview mutations without changing files",
     )
 
-    commands.add_parser("doctor", help="Check Ollama and model availability")
+    commands.add_parser("doctor", help="Check the configured model endpoint")
 
     sessions = commands.add_parser("sessions", help="List saved sessions")
     sessions.add_argument("--limit", type=int, default=20)
@@ -137,32 +136,26 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to a minimal-local-agent.eval-dataset.v1 JSON file",
     )
     evaluation.add_argument("--json", action="store_true", help="Print JSON output")
+
+    web = commands.add_parser("web", help="Start the local web console")
+    web.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Loopback host (default: 127.0.0.1)",
+    )
+    web.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
     return parser
 
 
 def _doctor(settings: Settings) -> int:
-    url = f"{settings.base_url.rstrip('/')}/models"
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
-    try:
-        with urllib.request.urlopen(request, timeout=5) as response:
-            payload = json.load(response)
-    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
-        print(f"[FAIL] Ollama API: {exc}")
-        print(f"       Expected endpoint: {url}")
-        return 2
-
-    model_ids = {
-        str(item.get("id"))
-        for item in payload.get("data", [])
-        if isinstance(item, dict)
-    }
-    print(f"[OK] Ollama API: {url}")
-    if settings.model in model_ids:
-        print(f"[OK] Model installed: {settings.model}")
+    result = probe_model(settings)
+    label = "OK" if result.state == "ready" else "WARN" if result.online else "FAIL"
+    print(f"[{label}] {settings.provider} / {settings.model}: {result.detail}")
+    if result.state == "ready":
         return 0
-    print(f"[WARN] Model not found: {settings.model}")
-    print(f"       Run: ollama pull {settings.model}")
-    return 1
+    if result.state == "missing" and settings.provider == "ollama":
+        print(f"       Run: ollama pull {settings.model}")
+    return 1 if result.online else 2
 
 
 def _event_printer(event: RuntimeEvent) -> None:
@@ -493,6 +486,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _undo(settings, args.change_set, args.yes)
         if args.command == "eval":
             return _evaluate(settings, args.model, args.dataset, args.json)
+        if args.command == "web":
+            from minimal_local_agent.web import serve_web
+
+            return serve_web(settings, host=args.host, port=args.port)
     except (FileNotFoundError, ValueError) as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 2

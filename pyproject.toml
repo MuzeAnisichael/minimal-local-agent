@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "minimal-local-agent"
-version = "0.5.0"
-description = "A minimal, auditable local-first AI agent powered by Ollama."
+version = "0.6.0"
+description = "A minimal, auditable local-first AI agent with a local web console."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "MuzeAnisichael" }]
-keywords = ["agent", "ai", "local-first", "ollama", "pydantic-ai"]
+keywords = ["agent", "ai", "local-first", "ollama", "pydantic-ai", "web"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -43,6 +43,9 @@ Source = "https://github.com/MuzeAnisichael/minimal-local-agent"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+minimal_local_agent = ["web_assets/*.html", "web_assets/*.css", "web_assets/*.js"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

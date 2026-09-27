@@ -52,6 +52,25 @@ def test_environment_overrides_file(
     assert settings.write_policy == "deny"
 
 
+def test_loads_compatible_provider_without_storing_the_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "agent.toml"
+    config.write_text(
+        '[agent]\nprovider = "openai-compatible"\n'
+        'model = "example-model"\nbase_url = "https://example.test/v1"\n'
+        'api_key_env = "TEST_MODEL_KEY"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TEST_MODEL_KEY", "not-in-settings")
+
+    settings = Settings.load(config)
+
+    assert settings.provider == "openai-compatible"
+    assert settings.api_key_env == "TEST_MODEL_KEY"
+    assert "not-in-settings" not in repr(settings)
+
+
 def test_rejects_invalid_limits(tmp_path: Path) -> None:
     config = tmp_path / "agent.toml"
     config.write_text("[agent]\nrequest_limit = 0", encoding="utf-8")

@@ -10,11 +10,12 @@ reversible edits, and no shell.**
 [简体中文](README.zh-CN.md) · [Comparison](docs/COMPARISON.md) ·
 [Validation](docs/VALIDATION.md) · [Security](SECURITY.md)
 
-Minimal Local Agent runs an Ollama model through PydanticAI, confines file tools to
-one workspace, and persists sessions, audit events, reversible changes, and
+Minimal Local Agent uses PydanticAI with Ollama by default or an explicitly
+configured OpenAI Chat Completions-compatible endpoint. It confines file tools to
+one workspace and persists sessions, audit events, reversible changes, and
 hash-chained execution receipts in SQLite.
 
-Version `0.5.0` is an alpha release. The runtime enforces its boundaries in code;
+Version `0.6.0` is an alpha release. The runtime enforces its boundaries in code;
 model output and configured MCP servers remain untrusted inputs.
 
 ## Why it is different
@@ -36,11 +37,13 @@ This project optimizes for a trust boundary that can be understood in one sittin
 See the [project comparison](docs/COMPARISON.md) for the trade-offs relative to
 smolagents, Qwen-Agent, nanobot, and Goose.
 
-## v0.5 capabilities
+## v0.6 capabilities
 
 | Area | Included |
 |---|---|
 | Runtime | Stable `AgentRuntime` API, replaceable model factory, bounded agent loop |
+| Models | Ollama by default; opt-in OpenAI Chat Completions-compatible endpoints |
+| Interface | Local Web console and CLI; Web tasks are read-only or preview-only |
 | Read tools | `list_files`, `read_file`, `search_text` |
 | Mutation tools | `write_file`, transactional `edit_files` |
 | Mutation safety | Unified diff, `confirm` / `preview` / `deny`, stale checks, rollback, undo |
@@ -51,8 +54,8 @@ smolagents, Qwen-Agent, nanobot, and Goose.
 
 ## Quick start
 
-Requirements: Python 3.11+, a running [Ollama](https://ollama.com/), and a model
-that supports tool calling.
+Requirements: Python 3.11+ and a configured model supporting tool calling. The
+quick start below uses [Ollama](https://ollama.com/) as the default.
 
 ### Windows PowerShell
 
@@ -66,6 +69,8 @@ ollama pull qwen3.5:9b
 Copy-Item agent.example.toml agent.toml
 minimal-agent doctor
 minimal-agent chat
+# Or open the local web console
+minimal-agent web
 ```
 
 ### macOS or Linux
@@ -80,9 +85,25 @@ ollama pull qwen3.5:9b
 cp agent.example.toml agent.toml
 minimal-agent doctor
 minimal-agent chat
+# Or open the local web console
+minimal-agent web
 ```
 
 Put only the files the agent may access under `workspace/`.
+
+## Local web console
+
+Start the browser-based workbench and open `http://127.0.0.1:8765`:
+
+```bash
+minimal-agent web
+```
+
+The web console supports read-only runs, non-writing change previews, session
+history, runtime events, and receipt-chain status. It listens only on loopback and
+does not expose confirmed file writes; use the interactive CLI when you want to
+approve and apply a complete diff. It works on small screens, but is intended as a
+local desktop interface, not a remotely exposed service.
 
 ## CLI
 
@@ -122,10 +143,10 @@ never modifies files.
 
 ```mermaid
 flowchart LR
-    User["CLI or Python host"] --> Runtime["AgentRuntime"]
+    User["CLI, local web, or Python host"] --> Runtime["AgentRuntime"]
     Runtime --> Policy["Capability policy compiler"]
     Policy --> Loop["Bounded PydanticAI loop"]
-    Loop <--> Model["Ollama model"]
+    Loop <--> Model["Ollama or compatible endpoint"]
     Loop --> Read["3 workspace read tools"]
     Loop --> Mutate["write / exact multi-file edit"]
     Mutate --> Tx["preview → approve → revalidate → commit / rollback"]
@@ -147,6 +168,7 @@ Copy `agent.example.toml` to the ignored local file `agent.toml`.
 
 ```toml
 [agent]
+provider = "ollama"
 model = "qwen3.5:9b"
 base_url = "http://localhost:11434/v1"
 request_limit = 6
@@ -171,9 +193,36 @@ max_mcp_result_chars = 100000
 ```
 
 `MLA_*` environment overrides are available for all scalar settings. Notable
-examples are `MLA_MODEL`, `MLA_BASE_URL`, `MLA_WORKSPACE`, `MLA_DATABASE`,
+examples are `MLA_PROVIDER`, `MLA_MODEL`, `MLA_BASE_URL`, `MLA_API_KEY_ENV`,
+`MLA_WORKSPACE`, `MLA_DATABASE`,
 `MLA_WRITE_POLICY`, `MLA_DISABLED_TOOLS`, and each `MLA_MAX_*` limit. Relative paths
 are resolved from the configuration file directory.
+
+### Other model endpoints
+
+For a local server, an official API, or a relay exposing the OpenAI Chat
+Completions protocol, change only your ignored `agent.toml`:
+
+```toml
+[agent]
+provider = "openai-compatible"
+model = "your-tool-capable-model"
+base_url = "https://your-provider.example/v1"
+api_key_env = "MODEL_API_KEY"
+```
+
+Set `MODEL_API_KEY` in your local environment, then run `minimal-agent doctor` and
+a read-only task. `api_key_env` is the variable **name**, never the secret. For a
+keyless local compatible server, omit it and use a loopback/private-network URL.
+Remote endpoints require a key and keyed endpoints require HTTPS outside
+loopback. `doctor` checks `/models` without making a generation request; services
+without a model-list endpoint may show “unverified” until a task succeeds.
+
+This adapter targets Chat Completions and tool calling, not every provider-specific
+extension. A provider or model without compatible tool calls may fail a task.
+Keep real addresses, keys, and personal default models only in local ignored
+configuration or environment variables. Using a remote endpoint sends prompts
+and tool results—including workspace content read by the agent—to that service.
 
 Write tools can be `ask`, `preview`, or `deny`; they can never be configured to
 bypass approval. Read and external-read tools can be `allow` or `deny`.
@@ -196,7 +245,7 @@ allow_tools = ["search_notes", "read_note"]
 mcp_notes_read_note = "deny"
 ```
 
-The model sees prefixed names such as `mcp_notes_search_notes`. v0.5 accepts only
+The model sees prefixed names such as `mcp_notes_search_notes`. The MCP client accepts only
 `localhost`, `127.0.0.1`, or `::1` HTTP endpoints. Server instructions, sampling,
 elicitation, filesystem roots, implicit tool exposure, and remote URLs are disabled.
 Tool results have a size limit; audit records store argument names and hashes rather
@@ -288,6 +337,9 @@ Unit tests do not require Ollama. `minimal-agent doctor` checks the live endpoin
 minimal-local-agent/
 |-- src/minimal_local_agent/
 |   |-- agent.py       # bounded loop and AgentRuntime
+|   |-- models.py      # Ollama and compatible endpoint factories
+|   |-- web.py         # loopback-only Web API
+|   |-- web_assets/    # dependency-free local interface
 |   |-- mutations.py   # transactional edits and undo
 |   |-- policy.py      # capability compiler
 |   |-- mcp.py         # optional guarded MCP clients
@@ -302,9 +354,9 @@ minimal-local-agent/
 
 ## Deliberate non-goals
 
-The core does not aim to become a universal assistant. Shell/browser tools, a GUI,
+The core does not aim to become a universal assistant. Shell/browser tools,
 semantic memory, scheduling, autonomous background work, and multi-agent
-orchestration remain outside v0.5. Future work should focus on better receipt
+orchestration remain outside v0.6. Future work should focus on better receipt
 signing/export, context compaction, richer deterministic safety datasets, and
 adapter-level extensions that do not enlarge the default trust boundary.
 

@@ -31,6 +31,7 @@ def test_persists_session_history_and_runs(tmp_path: Path) -> None:
     sessions = store.list_sessions()
     assert sessions[0]["id"] == session_id
     assert sessions[0]["run_count"] == 1
+    assert sessions[0]["last_prompt"] == "hello"
     assert store.schema_version == 3
 
     moved = tmp_path / "moved.db"

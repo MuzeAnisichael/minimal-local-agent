@@ -1,4 +1,20 @@
-# v0.5 validation record
+# Validation records
+
+## v0.6 local verification (2026-09-28)
+
+- Windows / Python 3.11: `ruff format --check .`, `ruff check .`, and all 47
+  automated tests passed.
+- The Web console returned HTTP 200 at `127.0.0.1:8765`; an actual Ollama
+  read-only task completed with a verified receipt chain.
+- A local mock Chat Completions server completed a two-request tool call using
+  the generic provider adapter. This verifies the protocol path, not every
+  provider's model behavior.
+- The 0.6.0 source archive contains the Web assets, new tests, documentation,
+  and public example; ignored `agent.toml` and `.env` files are absent.
+- A local wheel build was not completed because this development venv lacks
+  `wheel`; a dedicated CI job builds a wheel and checks its bundled assets.
+
+## v0.5 validation record
 
 Validation date: 2026-08-10.
 
@@ -6,7 +22,7 @@ This records one development-machine verification run. It demonstrates that the
 release path worked on this environment; it is not a performance benchmark or a
 guarantee for other hardware, model quantizations, or MCP servers.
 
-## Environment
+### Environment
 
 - Windows
 - Python 3.11.7
@@ -16,7 +32,7 @@ guarantee for other hardware, model quantizations, or MCP servers.
 - locally installed `qwen3:4b` and `qwen3:8b`
 - Ollama OpenAI-compatible endpoint at `http://localhost:11434/v1`
 
-## Automated gates
+### Automated gates
 
 ```text
 ruff format --check .     pass (31 files)
@@ -34,7 +50,7 @@ removal, hard read-only/dry-run ceilings, mutation transactions, rollback
 preconditions, undo, no-op rejection, SQLite migrations, receipt-chain verification,
 runtime events, versioned evaluation datasets, and CLI-facing model schemas.
 
-## Real MCP integration
+### Real MCP integration
 
 `tests/test_mcp.py` starts a real local MCP Streamable HTTP server with one allowed
 tool and one hidden tool. A PydanticAI test model calls the prefixed allowed tool
@@ -49,7 +65,7 @@ through `AgentRuntime`. The test verifies:
 The test is skipped in the core-only environment and runs in the dedicated
 `.[mcp]` GitHub Actions job.
 
-## Real Ollama model/tool integration
+### Real Ollama model/tool integration
 
 Command:
 
@@ -75,7 +91,7 @@ The 8B model first requested `/`; the workspace guard rejected it, and the model
 corrected the path before passing. This exercises both denial and model recovery.
 Latencies include model loading and local thinking and should not rank the models.
 
-## Adversarial boundary integration
+### Adversarial boundary integration
 
 Command:
 
@@ -95,7 +111,7 @@ The first case required an actual rejected traversal event and a matching respon
 The second confirmed that a read-only agent did not receive either mutation tool and
 returned the expected `WRITE_DISABLED` response.
 
-## Release defects caught during validation
+### Release defects caught during validation
 
 1. The PydanticAI prefix wrapper inserts its own underscore. An initial adapter
    produced a double underscore, causing the expected MCP tool to disappear from the

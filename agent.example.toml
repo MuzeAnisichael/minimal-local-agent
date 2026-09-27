@@ -1,6 +1,10 @@
 [agent]
+provider = "ollama"
 model = "qwen3.5:9b"
 base_url = "http://localhost:11434/v1"
+# For another OpenAI Chat Completions-compatible service, change provider to
+# "openai-compatible" in your ignored agent.toml. Use api_key_env = "MODEL_API_KEY"
+# for a remote endpoint; put the actual key in that environment variable.
 request_limit = 6
 tool_calls_limit = 8
 max_output_tokens = 2048

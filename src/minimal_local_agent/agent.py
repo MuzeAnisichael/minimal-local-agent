@@ -12,7 +12,7 @@ from pydantic_ai.messages import ModelMessagesTypeAdapter
 from minimal_local_agent.config import Settings
 from minimal_local_agent.events import EventBus, EventHandler
 from minimal_local_agent.mcp import build_mcp_bundle
-from minimal_local_agent.models import ModelFactory, OllamaModelFactory
+from minimal_local_agent.models import ConfiguredModelFactory, ModelFactory
 from minimal_local_agent.mutations import EditRequest, MutationEngine, sha256_text
 from minimal_local_agent.policy import PolicyEngine
 from minimal_local_agent.security import WorkspaceGuard
@@ -120,7 +120,7 @@ def build_agent(
     """Compile settings and policy into the model-visible tool surface."""
 
     policy = policy or PolicyEngine(settings)
-    model = (model_factory or OllamaModelFactory()).create(settings)
+    model = (model_factory or ConfiguredModelFactory()).create(settings)
     agent: Agent[AgentDependencies, str] = Agent(
         model,
         deps_type=AgentDependencies,
@@ -359,7 +359,7 @@ class AgentRuntime:
             "session_id": session_id,
             "run_id": run_id,
             "model": self.settings.model,
-            "provider": "ollama-openai-compatible",
+            "provider": self.settings.provider,
             "endpoint_sha256": sha256_text(self.settings.base_url),
             "prompt_sha256": sha256_text(prompt),
             "response_sha256": None if response is None else sha256_text(response),
