@@ -55,6 +55,8 @@ class PolicyEngine:
     def capabilities(
         self,
         external_tools: tuple[str, ...] = (),
+        *,
+        python_tools: tuple[str, ...] = (),
     ) -> tuple[Capability, ...]:
         values = [
             Capability(
@@ -74,14 +76,38 @@ class PolicyEngine:
             )
             for name in external_tools
         )
+        values.extend(
+            Capability(
+                name=name,
+                effect="external-read",
+                decision=self.decision(name, "external-read"),
+                source="python",
+            )
+            for name in python_tools
+        )
         return tuple(values)
 
-    def manifest(self, external_tools: tuple[str, ...] = ()) -> list[dict[str, str]]:
-        return [asdict(capability) for capability in self.capabilities(external_tools)]
+    def manifest(
+        self,
+        external_tools: tuple[str, ...] = (),
+        *,
+        python_tools: tuple[str, ...] = (),
+    ) -> list[dict[str, str]]:
+        return [
+            asdict(capability)
+            for capability in self.capabilities(
+                external_tools, python_tools=python_tools
+            )
+        ]
 
-    def fingerprint(self, external_tools: tuple[str, ...] = ()) -> str:
+    def fingerprint(
+        self,
+        external_tools: tuple[str, ...] = (),
+        *,
+        python_tools: tuple[str, ...] = (),
+    ) -> str:
         encoded = json.dumps(
-            self.manifest(external_tools),
+            self.manifest(external_tools, python_tools=python_tools),
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
