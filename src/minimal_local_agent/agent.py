@@ -15,6 +15,7 @@ from minimal_local_agent.mcp import build_mcp_bundle
 from minimal_local_agent.models import ConfiguredModelFactory, ModelFactory
 from minimal_local_agent.mutations import EditRequest, MutationEngine, sha256_text
 from minimal_local_agent.policy import PolicyEngine
+from minimal_local_agent.read_tools import ReadTool, build_read_toolset
 from minimal_local_agent.security import WorkspaceGuard
 from minimal_local_agent.store import AuditStore
 from minimal_local_agent.workspace import WorkspaceTools
@@ -312,15 +313,15 @@ class AgentRuntime:
         settings: Settings,
         *,
         model_factory: ModelFactory | None = None,
-        toolsets: Sequence[Any] = (),
-        external_tools: tuple[str, ...] = (),
+        read_tools: Sequence[ReadTool] = (),
     ) -> None:
         self.settings = settings
         self.policy = PolicyEngine(settings)
-        mcp_bundle = build_mcp_bundle(settings, self.policy)
-        self.external_tools = tuple(
-            dict.fromkeys((*external_tools, *mcp_bundle.tool_names))
+        read_toolset, self.python_tools = build_read_toolset(
+            tuple(read_tools), settings, self.policy
         )
+        mcp_bundle = build_mcp_bundle(settings, self.policy)
+        self.mcp_tools = mcp_bundle.tool_names
         self.store = AuditStore(settings.database)
         self.workspace = WorkspaceTools(
             WorkspaceGuard(settings.workspace),
@@ -339,8 +340,17 @@ class AgentRuntime:
             settings,
             policy=self.policy,
             model_factory=model_factory,
-            toolsets=(*toolsets, *mcp_bundle.toolsets),
+            toolsets=(
+                *((read_toolset,) if read_toolset is not None else ()),
+                *mcp_bundle.toolsets,
+            ),
         )
+
+    def _policy_manifest(self) -> list[dict[str, str]]:
+        return self.policy.manifest(self.mcp_tools, python_tools=self.python_tools)
+
+    def _policy_fingerprint(self) -> str:
+        return self.policy.fingerprint(self.mcp_tools, python_tools=self.python_tools)
 
     def _receipt(
         self,
@@ -366,8 +376,8 @@ class AgentRuntime:
             "success": success,
             "error": error,
             "usage": usage,
-            "policy": self.policy.manifest(self.external_tools),
-            "policy_sha256": self.policy.fingerprint(self.external_tools),
+            "policy": self._policy_manifest(),
+            "policy_sha256": self._policy_fingerprint(),
             "tool_events": [
                 {
                     "tool_name": event["tool_name"],
@@ -397,7 +407,7 @@ class AgentRuntime:
             "run.started",
             {
                 "model": self.settings.model,
-                "policy_sha256": self.policy.fingerprint(self.external_tools),
+                "policy_sha256": self._policy_fingerprint(),
             },
         )
         history_json = self.store.load_history(session_id)
