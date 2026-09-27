@@ -9,7 +9,7 @@ Minimal Local Agent 默认通过 PydanticAI 调用 Ollama，也可显式接入�
 Completions 的服务。文件工具被限制在一个工作区内，SQLite 保存会话、审计事件、
 可撤销变更和哈希链执行凭证。
 
-当前版本为 `0.6.0` Alpha。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为
+当前版本为 `0.8.0` Alpha。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为
 不可信输入。
 
 ## 核心差异
@@ -23,11 +23,12 @@ Completions 的服务。文件工具被限制在一个工作区内，SQLite 保�
 
 更完整的取舍见[同类项目对比](docs/COMPARISON.zh-CN.md)。
 
-## v0.6 能力
+## v0.8 能力
 
 | 范围 | 已实现 |
 |---|---|
 | 运行时 | 稳定的 `AgentRuntime` API、可替换模型工厂、受限单 Agent 循环 |
+| 定制 | 显式注册、受权限与审计约束的 Python 只读工具 |
 | 模型 | 默认 Ollama；可选择兼容 OpenAI Chat Completions 的端点 |
 | 界面 | 本地 Web 控制台与 CLI；Web 任务仅可只读或预览 |
 | 只读工具 | `list_files`、`read_file`、`search_text` |
@@ -131,6 +132,7 @@ flowchart LR
     Policy --> Loop["受限 PydanticAI 循环"]
     Loop <--> Model["Ollama 或兼容端点"]
     Loop --> Read["3 个工作区只读工具"]
+    Loop -. "由可信宿主显式注册" .-> PythonTools["Python 只读工具"]
     Loop --> Mutate["整文件写入 / 精确多文件编辑"]
     Mutate --> Tx["预览 → 批准 → 再校验 → 提交 / 回滚"]
     Read --> Guard["工作区边界与资源上限"]
@@ -172,6 +174,7 @@ max_mcp_result_chars = 100000
 [policy.tools]
 # search_text = "deny"
 # edit_files = "preview"
+# count_files = "deny" # 已注册的 Python 只读工具
 ```
 
 所有标量配置都支持 `MLA_*` 环境变量覆盖，常用项包括 `MLA_PROVIDER`、
@@ -205,6 +208,28 @@ api_key_env = "MODEL_API_KEY"
 
 写工具只能是 `ask`、`preview` 或 `deny`，不能配置成绕过批准；只读和外部只读工具只能
 是 `allow` 或 `deny`。
+
+## Python 只读工具扩展
+
+配置好支持工具调用的模型后，直接运行最小示例：
+
+```bash
+python examples/read_tool.py
+```
+
+示例通过 `ReadTool("count_files", count_files)` 向 `AgentRuntime` 显式注册工具，
+并强制只读。若要在本地 Web 页面中使用同一个工具，可在 Python 脚本中调用
+`serve_web(settings, read_tools=(ReadTool("count_files", count_files),))`。
+无需修改 Agent 核心，也不会从 TOML 动态导入代码。
+
+在 `[policy.tools]` 中设置 `count_files = "deny"` 后，该工具不会进入模型可见的
+工具表。允许的调用会受现有 `max_mcp_result_chars` 外部结果上限约束；审计和收据
+只存参数名/哈希及结果大小/哈希，不存完整参数或结果。模型会话历史仍可能包含完整
+工具结果。`ReadTool` 是**可信代码的只读声明，不是 Python 沙箱**：只注册已审阅、
+确实执行读取的函数。完整代码见 [examples/read_tool.py](examples/read_tool.py)。
+
+旧的 `AgentRuntime(toolsets=..., external_tools=...)` 入口可绕过权限与审计，现已移除；
+请迁移到 `read_tools=(ReadTool(...),)`。
 
 ## 可选 MCP 客户端
 
@@ -244,9 +269,9 @@ print(outcome.response)
 print(outcome.receipt_hash)
 ```
 
-v0.5 事件包括 `run.started`、`tool.completed`、`mutation.preview`、
+运行事件包括 `run.started`、`tool.completed`、`mutation.preview`、
 `mutation.applied`、`run.completed` 和 `run.failed`。宿主可通过 `model_factory` 替换模型
-构造，也可显式传入自己的工具集。观察回调失败不会改变 Agent 运行语义，错误会出现在
+构造，也可显式注册可信只读工具。观察回调失败不会改变 Agent 运行语义，错误会出现在
 `outcome.event_handler_errors` 中。
 
 执行凭证记录端点/提示词/回复哈希、用量、有效能力清单和适合审计的工具元数据，并按会话
@@ -298,7 +323,7 @@ pytest
 ## 有意不做的事情
 
 核心不以“万能个人助理”为目标。Shell/浏览器工具、语义记忆、定时调度、后台自治和
-多 Agent 编排不属于 v0.6。后续更适合优先增强凭证签名/导出、上下文压缩、确定性安全评测，
+多 Agent 编排不属于 v0.8。后续更适合优先增强凭证签名/导出、上下文压缩、确定性安全评测，
 以及不扩大默认信任边界的适配器扩展。
 
 ## License

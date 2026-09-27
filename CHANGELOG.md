@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here.
 
+## [0.8.0] - 2026-09-28
+
+### Added
+
+- Explicit host-owned Python `ReadTool` declarations for `AgentRuntime` and
+  `serve_web`, with policy-compiled model visibility, audit-safe call metadata,
+  result bounds, and receipt inclusion.
+- A runnable `examples/read_tool.py` showing an extension without modifying the
+  agent core or loading arbitrary code from configuration.
+- Tests for allowed, denied, oversized, and Web-hosted custom read tools.
+
+### Changed
+
+- `AgentRuntime(toolsets=..., external_tools=...)` is removed because raw toolsets
+  bypassed the project's policy and audit boundary. Use `read_tools=(ReadTool(...),)`
+  for trusted read-only Python extensions.
+- The capability manifest identifies Python-hosted tools separately from MCP tools.
+- Documentation distinguishes declared read-only host code from a sandbox.
+
 ## [0.6.0] - 2026-09-28
 
 ### Added
@@ -99,3 +118,4 @@ All notable changes to this project are documented here.
 [0.1.0]: https://github.com/MuzeAnisichael/minimal-local-agent/releases/tag/v0.1.0
 [0.5.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.2.0...v0.5.0
 [0.6.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.5.0...v0.6.0
+[0.8.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.6.0...v0.8.0

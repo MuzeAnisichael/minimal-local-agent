@@ -3,7 +3,7 @@
 from minimal_local_agent.read_tools import ReadTool
 from minimal_local_agent.runtime import AgentRuntime, RunOutcome, RuntimeEvent
 
-__version__ = "0.6.0"
+__version__ = "0.8.0"
 
 __all__ = [
     "AgentRuntime",

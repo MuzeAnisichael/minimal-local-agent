@@ -1,5 +1,17 @@
 # Validation records
 
+## v0.8 local verification (2026-09-28)
+
+- Windows / Python 3.11: all 55 automated tests, Ruff lint, and Ruff format
+  checks passed. The suite covers custom read-tool allow/deny, audit metadata,
+  receipt inclusion, result limits, and the Web host path.
+- `python examples/read_tool.py` completed against the locally configured
+  Ollama model in read-only mode; no Agent core modification or connection data
+  was needed in the example.
+- The old raw `AgentRuntime(toolsets=...)` route was removed because it did not
+  enforce the project's policy/audit contract. Trusted Python functions are
+  explicitly not sandboxed.
+
 ## v0.6 local verification (2026-09-28)
 
 - Windows / Python 3.11: `ruff format --check .`, `ruff check .`, and all 47

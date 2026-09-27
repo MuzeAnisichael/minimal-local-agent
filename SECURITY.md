@@ -27,8 +27,10 @@ The runtime therefore:
   and MCP results;
 - restricts optional MCP clients to loopback HTTP endpoints with explicit tool
   allowlists and no server instructions, sampling, elicitation, or roots;
+- compiles explicitly registered Python read tools through the same allow/deny
+  policy and records bounded, audit-safe call metadata;
 - records runs, tool metadata, reversible snapshots, and hash-chained execution
-  receipts in local SQLite.
+  receipts in local SQLite;
 - serves the optional Web console only on loopback, with Host and same-origin
   checks, and never permits it to approve writes.
 
@@ -44,6 +46,20 @@ variable named in local `api_key_env`; never put a key in `agent.toml` or a URL.
 Remote keyed connections must use HTTPS. Keep local `agent.toml` and `.env` files
 out of Git. The Web console is intended only for the operator's own machine;
 do not reverse-proxy it or expose it on a network interface.
+
+## Python read-tool boundary
+
+`ReadTool` is an explicit declaration by a trusted Python host, not a sandbox.
+The runtime can remove a denied tool from the model schema, bound its returned
+JSON, and audit calls; it cannot prevent arbitrary Python inside a registered
+function from writing files, making network requests, or reading outside the
+workspace. Only register reviewed read-only functions, preferably using the
+provided workspace API. The local configuration file never imports Python code.
+
+The former raw `AgentRuntime(toolsets=..., external_tools=...)` hook was removed
+because those toolsets could bypass policy and audit. Audit and receipts store
+argument names/hashes and result sizes/hashes, while model conversation history
+can still contain complete tool results. A remote model receives those results.
 
 ## MCP boundary
 

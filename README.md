@@ -15,7 +15,7 @@ configured OpenAI Chat Completions-compatible endpoint. It confines file tools t
 one workspace and persists sessions, audit events, reversible changes, and
 hash-chained execution receipts in SQLite.
 
-Version `0.6.0` is an alpha release. The runtime enforces its boundaries in code;
+Version `0.8.0` is an alpha release. The runtime enforces its boundaries in code;
 model output and configured MCP servers remain untrusted inputs.
 
 ## Why it is different
@@ -37,7 +37,7 @@ This project optimizes for a trust boundary that can be understood in one sittin
 See the [project comparison](docs/COMPARISON.md) for the trade-offs relative to
 smolagents, Qwen-Agent, nanobot, and Goose.
 
-## v0.6 capabilities
+## v0.8 capabilities
 
 | Area | Included |
 |---|---|
@@ -49,7 +49,7 @@ smolagents, Qwen-Agent, nanobot, and Goose.
 | Mutation safety | Unified diff, `confirm` / `preview` / `deny`, stale checks, rollback, undo |
 | Policy | Per-tool allow/deny and mechanical removal from the tool surface |
 | Observability | SQLite audit, JSONL runtime events, hash-chained execution receipts |
-| Extensions | Optional, allowlisted loopback HTTP MCP clients |
+| Extensions | Explicit, audited Python read tools; optional allowlisted loopback MCP clients |
 | Evaluation | Built-in model smoke test plus versioned external JSON datasets |
 
 ## Quick start
@@ -148,6 +148,7 @@ flowchart LR
     Policy --> Loop["Bounded PydanticAI loop"]
     Loop <--> Model["Ollama or compatible endpoint"]
     Loop --> Read["3 workspace read tools"]
+    Loop -. "explicit trusted registration" .-> PythonTools["Python read tools"]
     Loop --> Mutate["write / exact multi-file edit"]
     Mutate --> Tx["preview → approve → revalidate → commit / rollback"]
     Read --> Guard["Workspace guard + resource limits"]
@@ -190,6 +191,7 @@ max_mcp_result_chars = 100000
 [policy.tools]
 # search_text = "deny"
 # edit_files = "preview"
+# count_files = "deny" # A registered Python read tool.
 ```
 
 `MLA_*` environment overrides are available for all scalar settings. Notable
@@ -226,6 +228,30 @@ and tool results—including workspace content read by the agent—to that servi
 
 Write tools can be `ask`, `preview`, or `deny`; they can never be configured to
 bypass approval. Read and external-read tools can be `allow` or `deny`.
+
+## Python read-tool extension
+
+Run the included example after configuring a tool-capable model:
+
+```bash
+python examples/read_tool.py
+```
+
+It registers `ReadTool("count_files", count_files)` with `AgentRuntime` and runs
+read-only. To host the same tool in the local Web console, pass it explicitly to
+`serve_web(settings, read_tools=(ReadTool("count_files", count_files),))` from a
+Python script. No Agent core edit or config-driven code import is needed.
+
+`[policy.tools] count_files = "deny"` removes it from the model-visible schema.
+Allowed calls are bounded by the existing `max_mcp_result_chars` external-result
+limit and recorded with argument names/hashes and result size/hash, not full
+arguments or results, in audit and receipts. Model conversation history can still
+contain the full result. `ReadTool` is a **trusted-code declaration, not a Python
+sandbox**: register only functions you have reviewed and that perform reads.
+
+For the complete example, see [examples/read_tool.py](examples/read_tool.py).
+The old `AgentRuntime(toolsets=..., external_tools=...)` escape hatch was removed
+because it bypassed the policy/audit path; migrate to `read_tools=(ReadTool(...),)`.
 
 ## Optional MCP client
 
@@ -270,9 +296,9 @@ print(outcome.response)
 print(outcome.receipt_hash)
 ```
 
-Event types in v0.5 are `run.started`, `tool.completed`, `mutation.preview`,
+Runtime event types include `run.started`, `tool.completed`, `mutation.preview`,
 `mutation.applied`, `run.completed`, and `run.failed`. The model construction
-boundary is replaceable through `model_factory`; additional host-owned toolsets can
+boundary is replaceable through `model_factory`; trusted host-owned read tools can
 be passed explicitly to `AgentRuntime`. Observer callback failures do not alter the
 agent run and are returned in `outcome.event_handler_errors`.
 
@@ -337,6 +363,7 @@ Unit tests do not require Ollama. `minimal-agent doctor` checks the live endpoin
 minimal-local-agent/
 |-- src/minimal_local_agent/
 |   |-- agent.py       # bounded loop and AgentRuntime
+|   |-- read_tools.py  # Python read-tool declarations and audit
 |   |-- models.py      # Ollama and compatible endpoint factories
 |   |-- web.py         # loopback-only Web API
 |   |-- web_assets/    # dependency-free local interface
@@ -347,6 +374,7 @@ minimal-local-agent/
 |   |-- store.py       # migrations, audit, receipts
 |   `-- evals.py       # versioned evaluation harness
 |-- evals/             # reusable evaluation datasets
+|-- examples/          # minimal host-side extension example
 |-- tests/
 |-- docs/
 `-- agent.example.toml
@@ -356,7 +384,7 @@ minimal-local-agent/
 
 The core does not aim to become a universal assistant. Shell/browser tools,
 semantic memory, scheduling, autonomous background work, and multi-agent
-orchestration remain outside v0.6. Future work should focus on better receipt
+orchestration remain outside v0.8. Future work should focus on better receipt
 signing/export, context compaction, richer deterministic safety datasets, and
 adapter-level extensions that do not enlarge the default trust boundary.
 

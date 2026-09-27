@@ -1,6 +1,7 @@
 import io
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from threading import Thread
 from unittest.mock import patch
 
@@ -32,6 +33,24 @@ def test_compatible_endpoint_uses_key_from_named_environment_variable(
     assert isinstance(model, OpenAIChatModel)
     assert model_api_key(settings) == "test-secret"
     assert "test-secret" not in repr(settings)
+
+
+def test_environment_can_switch_the_default_model_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "agent.toml"
+    config.write_text("[agent]\nprovider = 'ollama'\n", encoding="utf-8")
+    monkeypatch.setenv("MLA_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MLA_MODEL", "example/model")
+    monkeypatch.setenv("MLA_BASE_URL", "https://example.test/v1")
+    monkeypatch.setenv("MLA_API_KEY_ENV", "TEST_MODEL_KEY")
+    monkeypatch.setenv("TEST_MODEL_KEY", "test-secret")
+
+    settings = Settings.load(config)
+
+    assert settings.provider == "openai-compatible"
+    assert settings.model == "example/model"
+    assert isinstance(ConfiguredModelFactory().create(settings), OpenAIChatModel)
 
 
 def test_compatible_endpoint_requires_key_for_remote_service(

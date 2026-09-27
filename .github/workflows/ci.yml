@@ -49,7 +49,8 @@ jobs:
           python -c "import glob, zipfile; wheels=glob.glob('dist/*.whl');
           assert len(wheels)==1; names=zipfile.ZipFile(wheels[0]).namelist();
           assert all(any(name.endswith('/web_assets/'+asset) for name in names)
-          for asset in ('index.html','app.css','app.js'))"
+          for asset in ('index.html','app.css','app.js'));
+          assert any(name.endswith('/read_tools.py') for name in names)"
 
   mcp-extra:
     runs-on: ubuntu-latest
