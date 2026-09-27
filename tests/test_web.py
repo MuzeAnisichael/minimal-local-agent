@@ -3,13 +3,18 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Thread
+from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
+from pydantic_ai import RunContext
 from pydantic_ai.models.test import TestModel
 
+from minimal_local_agent.agent import AgentDependencies
 from minimal_local_agent.config import Settings
+from minimal_local_agent.models import ConfiguredModelFactory
+from minimal_local_agent.read_tools import ReadTool
 from minimal_local_agent.runtime import AgentRuntime
 from minimal_local_agent.store import AuditStore
 from minimal_local_agent.web import create_web_server
@@ -25,14 +30,20 @@ def _runtime(settings: Settings) -> AgentRuntime:
 
 
 @contextmanager
-def _live_server(tmp_path: Path, runtime_factory=_runtime) -> Iterator[str]:
+def _live_server(
+    tmp_path: Path,
+    runtime_factory=_runtime,
+    read_tools: tuple[ReadTool, ...] = (),
+) -> Iterator[str]:
     settings = Settings(
         base_url="http://127.0.0.1:9/v1",
         workspace=tmp_path / "workspace",
         database=tmp_path / "state.db",
         write_policy="confirm",
     )
-    server = create_web_server(settings, port=0, runtime_factory=runtime_factory)
+    server = create_web_server(
+        settings, port=0, runtime_factory=runtime_factory, read_tools=read_tools
+    )
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -173,3 +184,43 @@ def test_web_server_rejects_non_loopback_host(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="loopback-only"):
         create_web_server(settings, host="0.0.0.0")
+
+
+def test_web_can_expose_an_explicit_python_read_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "a").write_text("one\ntwo\n", encoding="utf-8")
+
+    def line_count(ctx: RunContext[AgentDependencies], path: str) -> int:
+        """Count lines in a workspace file."""
+        return len(ctx.deps.workspace.read_file(path).splitlines())
+
+    def model(_self: ConfiguredModelFactory, _settings: Settings) -> TestModel:
+        return TestModel(call_tools=["line_count"], custom_output_text="done")
+
+    monkeypatch.setattr(ConfiguredModelFactory, "create", model)
+    with _live_server(
+        tmp_path,
+        runtime_factory=None,
+        read_tools=(ReadTool("line_count", line_count),),
+    ) as base_url:
+        with urlopen(f"{base_url}/api/status", timeout=5) as response:
+            status: dict[str, Any] = json.load(response)
+        result = _json_request(
+            f"{base_url}/api/run", {"prompt": "Count lines", "mode": "read"}
+        )
+        with urlopen(
+            f"{base_url}/api/sessions/{result['session_id']}", timeout=5
+        ) as response:
+            session: dict[str, Any] = json.load(response)
+
+    capabilities = status["modes"]["read"]["capabilities"]
+    assert any(
+        item["name"] == "line_count" and item["source"] == "python"
+        for item in capabilities
+    )
+    assert result["response"] == "done"
+    assert session["tool_events"][0]["tool_name"] == "line_count"
+    assert session["receipt_chain"]["verified"] is True

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,6 +15,7 @@ from minimal_local_agent import __version__
 from minimal_local_agent.config import Settings
 from minimal_local_agent.models import probe_model
 from minimal_local_agent.policy import PolicyEngine
+from minimal_local_agent.read_tools import ReadTool, build_read_toolset
 from minimal_local_agent.runtime import AgentRuntime
 from minimal_local_agent.store import AuditStore
 
@@ -55,11 +56,21 @@ class WebApp:
         self,
         settings: Settings,
         *,
-        runtime_factory: RuntimeFactory = AgentRuntime,
+        read_tools: Sequence[ReadTool] = (),
+        runtime_factory: RuntimeFactory | None = None,
     ) -> None:
+        if read_tools and runtime_factory is not None:
+            raise ValueError("read_tools cannot be combined with runtime_factory")
         self.settings = settings
-        self.runtime_factory = runtime_factory
+        self.read_tools = tuple(read_tools)
+        _, self.python_tools = build_read_toolset(
+            self.read_tools, settings, PolicyEngine(settings)
+        )
+        self.runtime_factory = runtime_factory or self._make_runtime
         self.store = AuditStore(settings.database)
+
+    def _make_runtime(self, settings: Settings) -> AgentRuntime:
+        return AgentRuntime(settings, read_tools=self.read_tools)
 
     @property
     def external_tools(self) -> tuple[str, ...]:
@@ -86,13 +97,13 @@ class WebApp:
                 "read": {
                     "label": "只读",
                     "capabilities": PolicyEngine(read_settings).manifest(
-                        self.external_tools
+                        self.external_tools, python_tools=self.python_tools
                     ),
                 },
                 "preview": {
                     "label": "变更预览",
                     "capabilities": PolicyEngine(preview_settings).manifest(
-                        self.external_tools
+                        self.external_tools, python_tools=self.python_tools
                     ),
                 },
             },
@@ -396,7 +407,8 @@ def create_web_server(
     *,
     host: str = "127.0.0.1",
     port: int = 8765,
-    runtime_factory: RuntimeFactory = AgentRuntime,
+    read_tools: Sequence[ReadTool] = (),
+    runtime_factory: RuntimeFactory | None = None,
 ) -> WebServer:
     """Create, but do not start, the local-only web server."""
 
@@ -405,7 +417,10 @@ def create_web_server(
         raise ValueError(f"Web host must be loopback-only: {allowed}")
     if not 0 <= port <= 65_535:
         raise ValueError("Web port must be between 0 and 65535")
-    return WebServer((host, port), WebApp(settings, runtime_factory=runtime_factory))
+    return WebServer(
+        (host, port),
+        WebApp(settings, read_tools=read_tools, runtime_factory=runtime_factory),
+    )
 
 
 def serve_web(
@@ -413,10 +428,11 @@ def serve_web(
     *,
     host: str = "127.0.0.1",
     port: int = 8765,
+    read_tools: Sequence[ReadTool] = (),
 ) -> int:
     """Run the web console until interrupted."""
 
-    server = create_web_server(settings, host=host, port=port)
+    server = create_web_server(settings, host=host, port=port, read_tools=read_tools)
     actual_port = server.server_address[1]
     print(f"Minimal Local Agent Web: http://{host}:{actual_port}", flush=True)
     print("Press Ctrl+C to stop.", flush=True)
