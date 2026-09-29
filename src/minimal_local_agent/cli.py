@@ -429,6 +429,17 @@ def _evaluate(
                 f"\n{report.model} [{report.dataset}]: "
                 f"{report.passed}/{report.total} passed"
             )
+            for family, summary in report.families.items():
+                tokens = summary["tokens_per_success"]
+                token_text = "n/a" if tokens is None else str(tokens)
+                latency = summary["latency_ms_per_success"]
+                latency_text = "n/a" if latency is None else str(latency)
+                print(
+                    f"  {family}: {summary['passed']}/{summary['total']} "
+                    f"success ({summary['success_rate']:.1%}); "
+                    f"{latency_text} ms/success; "
+                    f"{token_text} tokens/success"
+                )
             for result in report.results:
                 state = "PASS" if result.passed else "FAIL"
                 tools = ", ".join(result.observed_tools) or "none"

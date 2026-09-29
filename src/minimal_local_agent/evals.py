@@ -25,6 +25,7 @@ class EvaluationCase:
     prompt: str
     expected_tool: str | None
     expected_text: str
+    family: str = "general"
     expected_status: str = "ok"
     forbidden_tools: tuple[str, ...] = ()
     files: tuple[tuple[str, str], ...] = ()
@@ -42,6 +43,7 @@ class EvaluationDataset:
 class EvaluationResult:
     model: str
     case: str
+    family: str
     passed: bool
     latency_ms: int
     expected_tool: str | None
@@ -58,6 +60,7 @@ class EvaluationReport:
     model: str
     dataset: str
     results: tuple[EvaluationResult, ...]
+    max_context_bytes: int = 64_000
 
     @property
     def passed(self) -> int:
@@ -67,21 +70,68 @@ class EvaluationReport:
     def total(self) -> int:
         return len(self.results)
 
+    @property
+    def summary(self) -> dict[str, Any]:
+        return _summarize(self.results)
+
+    @property
+    def families(self) -> dict[str, dict[str, Any]]:
+        names = dict.fromkeys(result.family for result in self.results)
+        return {
+            name: _summarize(tuple(r for r in self.results if r.family == name))
+            for name in names
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "model": self.model,
             "dataset": self.dataset,
             "passed": self.passed,
             "total": self.total,
+            "summary": self.summary,
+            "families": self.families,
             "parameters": {
                 "temperature": 0.0,
                 "request_limit": EVALUATION_REQUEST_LIMIT,
                 "tool_calls_limit": EVALUATION_TOOL_CALLS_LIMIT,
                 "max_output_tokens": EVALUATION_MAX_OUTPUT_TOKENS,
+                "max_context_bytes": self.max_context_bytes,
                 "write_policy": "deny",
             },
             "results": [asdict(result) for result in self.results],
         }
+
+
+def _total_tokens(usage: dict[str, Any] | None) -> int | None:
+    if usage is None:
+        return None
+    total = usage.get("total_tokens")
+    if isinstance(total, int) and total >= 0:
+        return total
+    inputs = usage.get("input_tokens")
+    outputs = usage.get("output_tokens")
+    if all(isinstance(value, int) and value >= 0 for value in (inputs, outputs)):
+        return inputs + outputs
+    return None
+
+
+def _summarize(results: tuple[EvaluationResult, ...]) -> dict[str, Any]:
+    passed = sum(result.passed for result in results)
+    total = len(results)
+    latency = sum(result.latency_ms for result in results)
+    token_values = [_total_tokens(result.usage) for result in results]
+    unmeasured = sum(value is None for value in token_values)
+    tokens = sum(value for value in token_values if value is not None)
+    return {
+        "passed": passed,
+        "total": total,
+        "success_rate": round(passed / total, 3) if total else 0.0,
+        "latency_ms_per_success": round(latency / passed) if passed else None,
+        "tokens_per_success": (
+            round(tokens / passed, 1) if passed and not unmeasured else None
+        ),
+        "unmeasured_token_cases": unmeasured,
+    }
 
 
 def builtin_dataset() -> EvaluationDataset:
@@ -96,6 +146,7 @@ def builtin_dataset() -> EvaluationDataset:
                 ),
                 expected_tool="list_files",
                 expected_text="marker-7f3c1a.txt",
+                family="workspace-read",
                 files=(("marker-7f3c1a.txt", "list evaluation marker\n"),),
             ),
             EvaluationCase(
@@ -106,6 +157,7 @@ def builtin_dataset() -> EvaluationDataset:
                 ),
                 expected_tool="read_file",
                 expected_text="CODE-91D2E7",
+                family="workspace-read",
                 files=(("fact.txt", "verification-code: CODE-91D2E7\n"),),
             ),
             EvaluationCase(
@@ -116,6 +168,7 @@ def builtin_dataset() -> EvaluationDataset:
                 ),
                 expected_tool="search_text",
                 expected_text="nested/search-result.md",
+                family="workspace-read",
                 files=(("nested/search-result.md", "needle: FIND-4A8C6E\n"),),
             ),
         ),
@@ -181,6 +234,9 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
         if expected_status not in {"ok", "error", "denied", "preview"}:
             raise ValueError(f"Dataset case {index} has an invalid expected_status")
         expected_tool = value.get("expected_tool")
+        family = value.get("family", "general")
+        if not isinstance(family, str) or not family.strip():
+            raise ValueError(f"Dataset case {index} family cannot be empty")
         if expected_tool is not None and (
             not isinstance(expected_tool, str) or not expected_tool.strip()
         ):
@@ -195,6 +251,7 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
                     None if expected_tool is None else expected_tool.strip()
                 ),
                 expected_text=value["expected_text"],
+                family=family.strip(),
                 expected_status=expected_status,
                 forbidden_tools=tuple(forbidden),
                 files=tuple((key, item) for key, item in files.items()),
@@ -331,6 +388,7 @@ def evaluate_model(
                 EvaluationResult(
                     model=model.strip(),
                     case=case.name,
+                    family=case.family,
                     passed=passed,
                     latency_ms=round((time.perf_counter() - started) * 1000),
                     expected_tool=case.expected_tool,
@@ -346,7 +404,10 @@ def evaluate_model(
             )
 
     return EvaluationReport(
-        model=model.strip(), dataset=dataset.name, results=tuple(results)
+        model=model.strip(),
+        dataset=dataset.name,
+        results=tuple(results),
+        max_context_bytes=evaluation_settings.max_context_bytes,
     )
 
 

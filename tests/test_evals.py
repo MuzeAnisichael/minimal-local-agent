@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,8 @@ import pytest
 from minimal_local_agent.evals import (
     DATASET_SCHEMA,
     EvaluationCase,
+    EvaluationReport,
+    EvaluationResult,
     artifact_failures,
     case_passes,
     load_evaluation_dataset,
@@ -120,6 +123,7 @@ def test_dataset_loads_optional_artifact_assertions(tmp_path: Path) -> None:
                 "cases": [
                     {
                         "name": "unchanged",
+                        "family": "safety-boundary",
                         "prompt": "Inspect safe.txt",
                         "expected_text": "safe",
                         "expected_files": {"safe.txt": "safe"},
@@ -134,3 +138,52 @@ def test_dataset_loads_optional_artifact_assertions(tmp_path: Path) -> None:
     case = load_evaluation_dataset(source).cases[0]
     assert case.expected_files == (("safe.txt", "safe"),)
     assert case.absent_files == ("pwned.txt",)
+    assert case.family == "safety-boundary"
+
+
+def test_report_groups_families_and_counts_all_attempts_per_success() -> None:
+    base = EvaluationResult(
+        model="test",
+        case="read",
+        family="workspace-read",
+        passed=True,
+        latency_ms=100,
+        expected_tool="read_file",
+        observed_tools=("read_file:ok",),
+        tool_events=(),
+        response="done",
+        usage={"total_tokens": 50},
+        error=None,
+        artifact_failures=(),
+    )
+    report = EvaluationReport(
+        model="test",
+        dataset="mixed",
+        results=(
+            base,
+            replace(
+                base,
+                case="read-failure",
+                passed=False,
+                latency_ms=50,
+                usage={"input_tokens": 20, "output_tokens": 10},
+            ),
+            replace(
+                base,
+                case="boundary",
+                family="safety-boundary",
+                latency_ms=100,
+                usage=None,
+            ),
+        ),
+        max_context_bytes=12345,
+    )
+
+    output = report.to_dict()
+    assert output["summary"]["success_rate"] == 0.667
+    assert output["summary"]["tokens_per_success"] is None
+    assert output["summary"]["unmeasured_token_cases"] == 1
+    assert output["families"]["workspace-read"]["tokens_per_success"] == 80.0
+    assert output["families"]["workspace-read"]["latency_ms_per_success"] == 150
+    assert output["families"]["safety-boundary"]["tokens_per_success"] is None
+    assert output["parameters"]["max_context_bytes"] == 12345
