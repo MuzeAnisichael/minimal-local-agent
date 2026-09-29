@@ -7,8 +7,10 @@ import pytest
 from minimal_local_agent.evals import (
     DATASET_SCHEMA,
     EvaluationCase,
+    EvaluationDataset,
     EvaluationReport,
     EvaluationResult,
+    _materialize,
     artifact_failures,
     case_passes,
     load_evaluation_dataset,
@@ -95,6 +97,28 @@ def test_artifact_checks_verify_file_content_and_absence(tmp_path: Path) -> None
         "unexpected file: pwned.txt",
     )
     assert not case_passes(case, "unchanged", [], workspace)
+
+
+def test_fixture_materialization_preserves_exact_utf8_bytes(tmp_path: Path) -> None:
+    dataset = EvaluationDataset(
+        name="line-endings",
+        cases=(
+            EvaluationCase(
+                name="lf",
+                prompt="read",
+                expected_tool=None,
+                expected_text="line",
+                files=(("safe.txt", "line\n"),),
+                expected_files=(("safe.txt", "line\n"),),
+            ),
+        ),
+    )
+    workspace = tmp_path / "workspace"
+
+    _materialize(dataset, workspace)
+
+    assert (workspace / "safe.txt").read_bytes() == b"line\n"
+    assert artifact_failures(dataset.cases[0], workspace) == ()
 
 
 def test_artifact_checks_require_workspace_and_reject_escape(tmp_path: Path) -> None:

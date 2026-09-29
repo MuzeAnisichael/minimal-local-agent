@@ -271,7 +271,7 @@ def _materialize(dataset: EvaluationDataset, workspace: Path) -> None:
         for relative_path, content in case.files:
             target = guard.resolve(relative_path)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
+            target.write_bytes(content.encode("utf-8"))
 
 
 def case_passes(
