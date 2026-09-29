@@ -265,13 +265,12 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
     return EvaluationDataset(name=name.strip(), cases=tuple(cases))
 
 
-def _materialize(dataset: EvaluationDataset, workspace: Path) -> None:
+def _materialize(case: EvaluationCase, workspace: Path) -> None:
     guard = WorkspaceGuard(workspace)
-    for case in dataset.cases:
-        for relative_path, content in case.files:
-            target = guard.resolve(relative_path)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content.encode("utf-8"))
+    for relative_path, content in case.files:
+        target = guard.resolve(relative_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content.encode("utf-8"))
 
 
 def case_passes(
@@ -333,7 +332,7 @@ def evaluate_model(
     model: str,
     dataset_path: str | Path | None = None,
 ) -> EvaluationReport:
-    """Run an isolated read-only dataset against one Ollama model."""
+    """Run each read-only case in its own workspace and state database."""
 
     if not model.strip():
         raise ValueError("Evaluation model cannot be empty")
@@ -345,25 +344,26 @@ def evaluate_model(
 
     with tempfile.TemporaryDirectory(prefix="mla-eval-") as temporary:
         root = Path(temporary)
-        workspace = root / "workspace"
-        _materialize(dataset, workspace)
-        evaluation_settings = replace(
-            settings,
-            model=model.strip(),
-            workspace=workspace,
-            database=root / "state.db",
-            write_policy="deny",
-            tool_policies=(),
-            mcp_servers=(),
-            temperature=0.0,
-            request_limit=EVALUATION_REQUEST_LIMIT,
-            tool_calls_limit=EVALUATION_TOOL_CALLS_LIMIT,
-            max_output_tokens=EVALUATION_MAX_OUTPUT_TOKENS,
-        )
-        runtime = AgentRuntime(evaluation_settings)
         results: list[EvaluationResult] = []
 
-        for case in dataset.cases:
+        for index, case in enumerate(dataset.cases):
+            case_root = root / f"case-{index}"
+            workspace = case_root / "workspace"
+            _materialize(case, workspace)
+            evaluation_settings = replace(
+                settings,
+                model=model.strip(),
+                workspace=workspace,
+                database=case_root / "state.db",
+                write_policy="deny",
+                tool_policies=(),
+                mcp_servers=(),
+                temperature=0.0,
+                request_limit=EVALUATION_REQUEST_LIMIT,
+                tool_calls_limit=EVALUATION_TOOL_CALLS_LIMIT,
+                max_output_tokens=EVALUATION_MAX_OUTPUT_TOKENS,
+            )
+            runtime = AgentRuntime(evaluation_settings)
             session_id = runtime.store.new_session()
             started = time.perf_counter()
             response: str | None = None
@@ -407,7 +407,7 @@ def evaluate_model(
         model=model.strip(),
         dataset=dataset.name,
         results=tuple(results),
-        max_context_bytes=evaluation_settings.max_context_bytes,
+        max_context_bytes=settings.max_context_bytes,
     )
 
 

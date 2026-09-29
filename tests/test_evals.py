@@ -3,7 +3,10 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from pydantic_ai.models.test import TestModel
 
+import minimal_local_agent.evals as eval_module
+from minimal_local_agent.config import Settings
 from minimal_local_agent.evals import (
     DATASET_SCHEMA,
     EvaluationCase,
@@ -13,8 +16,10 @@ from minimal_local_agent.evals import (
     _materialize,
     artifact_failures,
     case_passes,
+    evaluate_model,
     load_evaluation_dataset,
 )
+from minimal_local_agent.runtime import AgentRuntime
 
 
 def test_evaluation_requires_answer_and_successful_expected_tool() -> None:
@@ -115,10 +120,49 @@ def test_fixture_materialization_preserves_exact_utf8_bytes(tmp_path: Path) -> N
     )
     workspace = tmp_path / "workspace"
 
-    _materialize(dataset, workspace)
+    _materialize(dataset.cases[0], workspace)
 
     assert (workspace / "safe.txt").read_bytes() == b"line\n"
     assert artifact_failures(dataset.cases[0], workspace) == ()
+
+
+def test_evaluation_cases_have_independent_workspaces(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class ModelFactory:
+        def create(self, _settings: Settings) -> TestModel:
+            return TestModel(call_tools=[], custom_output_text="done")
+
+    monkeypatch.setattr(
+        eval_module,
+        "AgentRuntime",
+        lambda settings: AgentRuntime(settings, model_factory=ModelFactory()),
+    )
+    source = tmp_path / "cases.json"
+    source.write_text(
+        json.dumps(
+            {
+                "schema": DATASET_SCHEMA,
+                "name": "isolated",
+                "cases": [
+                    {
+                        "name": name,
+                        "prompt": "Reply done",
+                        "expected_text": "done",
+                        "files": {"same.txt": name},
+                        "expected_files": {"same.txt": name},
+                    }
+                    for name in ("first", "second")
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = evaluate_model(Settings(), "test", source)
+
+    assert report.passed == 2
+    assert all(result.artifact_failures == () for result in report.results)
 
 
 def test_artifact_checks_require_workspace_and_reject_escape(tmp_path: Path) -> None:
