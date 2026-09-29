@@ -438,6 +438,8 @@ def _evaluate(
                 )
                 if result.error:
                     print(f"         error={result.error}")
+                if result.artifact_failures:
+                    print(f"         artifacts={', '.join(result.artifact_failures)}")
                 elif not result.passed and result.response:
                     response = " ".join(result.response.split())
                     print(f"         response={response[:300]!r}")

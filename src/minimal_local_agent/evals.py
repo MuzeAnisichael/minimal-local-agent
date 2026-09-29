@@ -28,6 +28,8 @@ class EvaluationCase:
     expected_status: str = "ok"
     forbidden_tools: tuple[str, ...] = ()
     files: tuple[tuple[str, str], ...] = ()
+    expected_files: tuple[tuple[str, str], ...] = ()
+    absent_files: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +50,7 @@ class EvaluationResult:
     response: str | None
     usage: dict[str, Any] | None
     error: str | None
+    artifact_failures: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,12 +144,29 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
         if not isinstance(value, dict):
             raise ValueError(f"Dataset case {index} must be an object")
         files = value.get("files", {})
+        expected_files = value.get("expected_files", {})
+        absent_files = value.get("absent_files", [])
         forbidden = value.get("forbidden_tools", [])
         if not isinstance(files, dict) or not all(
             isinstance(key, str) and isinstance(item, str)
             for key, item in files.items()
         ):
             raise ValueError(f"Dataset case {index} files must map strings to strings")
+        if not isinstance(expected_files, dict) or not all(
+            isinstance(key, str) and key.strip() and isinstance(item, str)
+            for key, item in expected_files.items()
+        ):
+            raise ValueError(
+                f"Dataset case {index} expected_files must map paths to strings"
+            )
+        if not isinstance(absent_files, list) or not all(
+            isinstance(item, str) and item.strip() for item in absent_files
+        ):
+            raise ValueError(f"Dataset case {index} absent_files must be paths")
+        if len(absent_files) != len(set(absent_files)) or set(expected_files) & set(
+            absent_files
+        ):
+            raise ValueError(f"Dataset case {index} has conflicting artifact paths")
         if not isinstance(forbidden, list) or not all(
             isinstance(item, str) for item in forbidden
         ):
@@ -178,6 +198,8 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
                 expected_status=expected_status,
                 forbidden_tools=tuple(forbidden),
                 files=tuple((key, item) for key, item in files.items()),
+                expected_files=tuple(expected_files.items()),
+                absent_files=tuple(absent_files),
             )
         )
     names = [case.name for case in cases]
@@ -199,6 +221,7 @@ def case_passes(
     case: EvaluationCase,
     response: str,
     events: list[dict[str, Any]],
+    workspace: Path | None = None,
 ) -> bool:
     """Require expected evidence and reject any successful forbidden tool call."""
 
@@ -214,7 +237,38 @@ def case_passes(
         expected_event
         and case.expected_text.casefold() in response.casefold()
         and not forbidden_called
+        and not artifact_failures(case, workspace)
     )
+
+
+def artifact_failures(case: EvaluationCase, workspace: Path | None) -> tuple[str, ...]:
+    """Check exact file bytes and absence without trusting the model's report."""
+
+    if not case.expected_files and not case.absent_files:
+        return ()
+    if workspace is None:
+        raise ValueError("Artifact checks require an evaluation workspace")
+    guard = WorkspaceGuard(workspace)
+    failures: list[str] = []
+    for path, expected in case.expected_files:
+        try:
+            target = guard.resolve(path)
+            expected_bytes = expected.encode("utf-8")
+            if (
+                not target.is_file()
+                or target.stat().st_size != len(expected_bytes)
+                or target.read_bytes() != expected_bytes
+            ):
+                failures.append(f"content mismatch: {path}")
+        except (OSError, ValueError):
+            failures.append(f"unreadable: {path}")
+    for path in case.absent_files:
+        try:
+            if guard.resolve(path).exists():
+                failures.append(f"unexpected file: {path}")
+        except (OSError, ValueError):
+            failures.append(f"unsafe path: {path}")
+    return tuple(failures)
 
 
 def evaluate_model(
@@ -259,15 +313,19 @@ def evaluate_model(
             usage: dict[str, Any] | None = None
             error: str | None = None
             passed = False
+            failed_artifacts: tuple[str, ...] = ()
             try:
                 outcome = runtime.run(case.prompt, session_id=session_id)
                 response = outcome.response
                 usage = outcome.usage
                 events = runtime.store.get_tool_events(session_id)
-                passed = case_passes(case, response, events)
+                passed = case_passes(case, response, events, workspace)
+                if not passed:
+                    failed_artifacts = artifact_failures(case, workspace)
             except Exception as exc:  # Keep comparisons running after one failure.
                 error = str(exc)
                 events = runtime.store.get_tool_events(session_id)
+                failed_artifacts = artifact_failures(case, workspace)
 
             results.append(
                 EvaluationResult(
@@ -283,6 +341,7 @@ def evaluate_model(
                     response=response,
                     usage=usage,
                     error=error,
+                    artifact_failures=failed_artifacts,
                 )
             )
 
@@ -298,6 +357,7 @@ __all__ = [
     "EvaluationReport",
     "EvaluationResult",
     "case_passes",
+    "artifact_failures",
     "evaluate_model",
     "load_evaluation_dataset",
 ]
