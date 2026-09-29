@@ -103,6 +103,7 @@ class Settings:
     request_limit: int = 6
     tool_calls_limit: int = 8
     max_output_tokens: int = 2048
+    max_context_bytes: int = 64_000
     temperature: float = 0.1
     write_policy: str = "confirm"
     max_file_bytes: int = 200_000
@@ -137,6 +138,7 @@ class Settings:
             "request_limit",
             "tool_calls_limit",
             "max_output_tokens",
+            "max_context_bytes",
             "max_file_bytes",
             "max_list_results",
             "max_search_results",
@@ -271,6 +273,9 @@ class Settings:
             ),
             max_output_tokens=_env(
                 "MLA_MAX_OUTPUT_TOKENS", agent.get("max_output_tokens", 2048), int
+            ),
+            max_context_bytes=_env(
+                "MLA_MAX_CONTEXT_BYTES", agent.get("max_context_bytes", 64_000), int
             ),
             temperature=_env("MLA_TEMPERATURE", agent.get("temperature", 0.1), float),
             write_policy=str(

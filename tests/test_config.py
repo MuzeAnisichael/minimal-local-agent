@@ -13,6 +13,7 @@ def test_loads_toml_and_resolves_relative_paths(tmp_path: Path) -> None:
 model = "qwen3.5:4b"
 request_limit = 3
 write_policy = "deny"
+max_context_bytes = 12345
 
 [paths]
 workspace = "files"
@@ -32,6 +33,7 @@ max_diff_chars = 12000
     assert settings.write_policy == "deny"
     assert settings.max_transaction_files == 4
     assert settings.max_diff_chars == 12_000
+    assert settings.max_context_bytes == 12_345
     assert settings.workspace == (tmp_path / "files").resolve()
     assert settings.database == (tmp_path / "state/agent.db").resolve()
 
@@ -44,12 +46,14 @@ def test_environment_overrides_file(
     monkeypatch.setenv("MLA_MODEL", "qwen3.5:9b")
     monkeypatch.setenv("MLA_REQUEST_LIMIT", "4")
     monkeypatch.setenv("MLA_WRITE_POLICY", "deny")
+    monkeypatch.setenv("MLA_MAX_CONTEXT_BYTES", "4567")
 
     settings = Settings.load(config)
 
     assert settings.model == "qwen3.5:9b"
     assert settings.request_limit == 4
     assert settings.write_policy == "deny"
+    assert settings.max_context_bytes == 4567
 
 
 def test_loads_compatible_provider_without_storing_the_key(

@@ -7,9 +7,15 @@ from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any
 
 from pydantic_ai import Agent, ModelSettings, RunContext, UsageLimits
-from pydantic_ai.messages import ModelMessagesTypeAdapter
+from pydantic_ai.capabilities import ProcessHistory
+from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 
 from minimal_local_agent.config import Settings
+from minimal_local_agent.context import (
+    ContextBudgetExceeded,
+    ContextReducer,
+    select_context,
+)
 from minimal_local_agent.events import EventBus, EventHandler
 from minimal_local_agent.mcp import build_mcp_bundle
 from minimal_local_agent.models import ConfiguredModelFactory, ModelFactory
@@ -76,6 +82,9 @@ class AgentDependencies:
     store: AuditStore
     confirm: Confirm
     events: EventBus
+    max_context_bytes: int
+    context_reducer: ContextReducer | None
+    context_checks: list[dict[str, Any]]
 
     def record_tool_event(
         self,
@@ -111,6 +120,28 @@ def _usage_dict(value: Any) -> dict[str, Any]:
     return {"summary": str(value)}
 
 
+def _prepare_history(
+    ctx: RunContext[AgentDependencies], messages: list[ModelMessage]
+) -> list[ModelMessage]:
+    try:
+        selected = select_context(
+            messages, ctx.deps.max_context_bytes, ctx.deps.context_reducer
+        )
+    except ContextBudgetExceeded as exc:
+        details = {**exc.details, "status": "rejected"}
+        ctx.deps.context_checks.append(details)
+        ctx.deps.events.emit("context.rejected", details)
+        raise
+    details = {
+        **selected.details,
+        "status": "reduced" if selected.details["reduced"] else "ok",
+    }
+    ctx.deps.context_checks.append(details)
+    if selected.details["reduced"]:
+        ctx.deps.events.emit("context.reduced", details)
+    return selected.messages
+
+
 def build_agent(
     settings: Settings,
     *,
@@ -131,6 +162,7 @@ def build_agent(
             temperature=settings.temperature,
             max_tokens=settings.max_output_tokens,
         ),
+        capabilities=[ProcessHistory(_prepare_history)],
     )
 
     def list_files(
@@ -314,8 +346,10 @@ class AgentRuntime:
         *,
         model_factory: ModelFactory | None = None,
         read_tools: Sequence[ReadTool] = (),
+        context_reducer: ContextReducer | None = None,
     ) -> None:
         self.settings = settings
+        self.context_reducer = context_reducer
         self.policy = PolicyEngine(settings)
         read_toolset, self.python_tools = build_read_toolset(
             tuple(read_tools), settings, self.policy
@@ -363,6 +397,7 @@ class AgentRuntime:
         usage: dict[str, Any] | None,
         error: str | None,
         tool_events: list[dict[str, Any]],
+        context_checks: list[dict[str, Any]],
     ) -> dict[str, Any]:
         return {
             "schema": "minimal-local-agent.execution-receipt.v1",
@@ -386,6 +421,7 @@ class AgentRuntime:
                 }
                 for event in tool_events
             ],
+            "context_checks": context_checks,
         }
 
     def run(
@@ -416,6 +452,7 @@ class AgentRuntime:
             if history_json is None
             else ModelMessagesTypeAdapter.validate_json(history_json)
         )
+        context_checks: list[dict[str, Any]] = []
         dependencies = AgentDependencies(
             session_id=session_id,
             workspace=self.workspace,
@@ -423,13 +460,16 @@ class AgentRuntime:
             store=self.store,
             confirm=confirm or (lambda _action, _detail: False),
             events=events,
+            max_context_bytes=self.settings.max_context_bytes,
+            context_reducer=self.context_reducer,
+            context_checks=context_checks,
         )
 
         try:
             result = self.agent.run_sync(
                 prompt,
                 deps=dependencies,
-                message_history=history,
+                message_history=list(history),
                 usage_limits=UsageLimits(
                     request_limit=self.settings.request_limit,
                     tool_calls_limit=self.settings.tool_calls_limit,
@@ -439,7 +479,7 @@ class AgentRuntime:
             response = str(result.output)
             usage = _usage_dict(result.usage)
             serialized = ModelMessagesTypeAdapter.dump_json(
-                result.all_messages()
+                [*history, *result.new_messages()]
             ).decode("utf-8")
             self.store.save_history(session_id, serialized)
         except Exception as exc:
@@ -467,6 +507,7 @@ class AgentRuntime:
                     usage=None,
                     error=str(exc),
                     tool_events=tool_events,
+                    context_checks=context_checks,
                 ),
             )
             events.emit(
@@ -499,6 +540,7 @@ class AgentRuntime:
                 usage=usage,
                 error=None,
                 tool_events=tool_events,
+                context_checks=context_checks,
             ),
         )
         events.emit(
