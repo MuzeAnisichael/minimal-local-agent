@@ -3,13 +3,14 @@
 **一个极简、可审计的本地 Agent 内核：单模型循环、显式能力、可撤销编辑，并且没有 Shell。**
 
 [English](README.md) · [同类项目对比](docs/COMPARISON.zh-CN.md) ·
-[验证记录](docs/VALIDATION.md) · [安全策略](SECURITY.md)
+[验证记录](docs/VALIDATION.md) · [路线图](docs/ROADMAP.zh-CN.md) ·
+[安全策略](SECURITY.md)
 
 Minimal Local Agent 默认通过 PydanticAI 调用 Ollama，也可显式接入兼容 OpenAI Chat
 Completions 的服务。文件工具被限制在一个工作区内，SQLite 保存会话、审计事件、
 可撤销变更和哈希链执行凭证。
 
-当前版本为 `0.8.0` Alpha。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为
+当前版本为 `0.9.0` Alpha。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为
 不可信输入。
 
 ## 核心差异
@@ -23,11 +24,12 @@ Completions 的服务。文件工具被限制在一个工作区内，SQLite 保�
 
 更完整的取舍见[同类项目对比](docs/COMPARISON.zh-CN.md)。
 
-## v0.8 能力
+## v0.9 能力
 
 | 范围 | 已实现 |
 |---|---|
-| 运行时 | 稳定的 `AgentRuntime` API、可替换模型工厂、受限单 Agent 循环 |
+| 运行时 | 公开的 `AgentRuntime` 嵌入接口、可替换模型工厂、受限单 Agent 循环 |
+| 上下文 | 逐次请求的消息字节预算；预留显式压缩接口，默认不自动压缩 |
 | 定制 | 显式注册、受权限与审计约束的 Python 只读工具 |
 | 模型 | 默认 Ollama；可选择兼容 OpenAI Chat Completions 的端点 |
 | 界面 | 本地 Web 控制台与 CLI；Web 任务仅可只读或预览 |
@@ -37,7 +39,7 @@ Completions 的服务。文件工具被限制在一个工作区内，SQLite 保�
 | 策略 | 逐工具 allow/deny，拒绝能力从工具面机械移除 |
 | 可观测性 | SQLite 审计、JSONL 事件、哈希链执行凭证 |
 | 扩展 | 可选、显式白名单的本机 HTTP MCP 客户端 |
-| 评测 | 内置模型冒烟测试和外部版本化 JSON 数据集 |
+| 评测 | 按任务族汇总结果，确定性检查答案、工具与文件产物 |
 
 ## 快速开始
 
@@ -158,6 +160,7 @@ base_url = "http://localhost:11434/v1"
 request_limit = 6
 tool_calls_limit = 8
 max_output_tokens = 2048
+max_context_bytes = 64000 # 序列化消息字节数，不是模型 token 数
 temperature = 0.1
 write_policy = "confirm" # "confirm"、"preview" 或 "deny"
 
@@ -208,6 +211,19 @@ api_key_env = "MODEL_API_KEY"
 
 写工具只能是 `ask`、`preview` 或 `deny`，不能配置成绕过批准；只读和外部只读工具只能
 是 `allow` 或 `deny`。
+
+### 上下文预算
+
+`max_context_bytes` 在**每次模型请求前**检查待发送消息的 UTF-8 JSON 字节数，
+包括工具返回后的后续请求。这是跨模型的保守保护，**不是**精确 token 计数，也不保证
+一定适配服务商的上下文窗口；工具 schema 等服务商封装不在此计数内。超限时明确失败，
+大小和哈希写入执行凭证，已保存的完整会话不会被裁剪。可开启新会话或通过本地配置、
+`MLA_MAX_CONTEXT_BYTES` 调整上限。
+
+可信 Python 宿主未来可显式向 `AgentRuntime` 传入 `context_reducer=` 接入压缩策略。
+它必须保留最新消息、输出不超过预算的模型视图，并保持工具调用与结果配对；运行时
+记录缩减视图的大小和哈希，SQLite 仍保存原始完整历史。本版不内置自动摘要，也不会
+从 TOML 动态导入压缩代码。
 
 ## Python 只读工具扩展
 
@@ -289,15 +305,18 @@ minimal-agent eval --model qwen3:4b --model qwen3:8b
 minimal-agent eval --dataset evals/adversarial.json --model qwen3:8b
 ```
 
-JSON schema 标识为 `minimal-local-agent.eval-dataset.v1`。每个用例可创建隔离文件，并声明
-预期工具、状态、回复片段和禁止工具。它是兼容性与回归测试，不是通用智能排行榜。
+JSON schema 仍为 `minimal-local-agent.eval-dataset.v1`。用例可声明任务族 `family`、
+隔离初始文件 `files`、预期工具/状态/回复、禁止工具，以及精确文件内容
+`expected_files` 和不应存在的文件 `absent_files`。产物检查读取真实隔离工作区，
+不依赖模型自述。报告按任务族列出成功率、每成功任务总耗时和 token；有用量缺失时
+token 指标显示未知，不伪装成货币价格。这是兼容性与回归测试，不是通用智能排行榜。
 
 ## 安全边界
 
 运行时强制执行：
 
 1. 所有相对路径都限制在一个解析后的工作区，包含符号链接检查；
-2. 模型请求、工具调用、输出、文件、搜索、事务、diff 和 MCP 结果都有上限；
+2. 消息字节、模型请求、工具调用、输出、文件、搜索、事务、diff 和 MCP 结果都有上限；
 3. 被拒绝的能力从模型工具表中机械移除；
 4. 精确唯一替换、可选源文件哈希和陈旧状态检查；
 5. 变更前展示统一 diff，随后原子写入，失败时回滚；
@@ -323,8 +342,8 @@ pytest
 ## 有意不做的事情
 
 核心不以“万能个人助理”为目标。Shell/浏览器工具、语义记忆、定时调度、后台自治和
-多 Agent 编排不属于 v0.8。后续更适合优先增强凭证签名/导出、上下文压缩、确定性安全评测，
-以及不扩大默认信任边界的适配器扩展。
+多 Agent 编排不属于 v0.9。后续工作以[路线图](docs/ROADMAP.zh-CN.md)中的兼容性和
+发行验证为主，不靠增加默认工具来扩大内核。
 
 ## License
 

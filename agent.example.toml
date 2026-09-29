@@ -8,6 +8,7 @@ base_url = "http://localhost:11434/v1"
 request_limit = 6
 tool_calls_limit = 8
 max_output_tokens = 2048
+max_context_bytes = 64000 # serialized model-message bytes, not model tokens
 temperature = 0.1
 write_policy = "confirm" # "confirm", "preview", or "deny"
 

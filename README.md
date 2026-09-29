@@ -8,14 +8,15 @@
 reversible edits, and no shell.**
 
 [简体中文](README.zh-CN.md) · [Comparison](docs/COMPARISON.md) ·
-[Validation](docs/VALIDATION.md) · [Security](SECURITY.md)
+[Validation](docs/VALIDATION.md) · [Roadmap](docs/ROADMAP.md) ·
+[Security](SECURITY.md)
 
 Minimal Local Agent uses PydanticAI with Ollama by default or an explicitly
 configured OpenAI Chat Completions-compatible endpoint. It confines file tools to
 one workspace and persists sessions, audit events, reversible changes, and
 hash-chained execution receipts in SQLite.
 
-Version `0.8.0` is an alpha release. The runtime enforces its boundaries in code;
+Version `0.9.0` is an alpha release. The runtime enforces its boundaries in code;
 model output and configured MCP servers remain untrusted inputs.
 
 ## Why it is different
@@ -37,11 +38,12 @@ This project optimizes for a trust boundary that can be understood in one sittin
 See the [project comparison](docs/COMPARISON.md) for the trade-offs relative to
 smolagents, Qwen-Agent, nanobot, and Goose.
 
-## v0.8 capabilities
+## v0.9 capabilities
 
 | Area | Included |
 |---|---|
-| Runtime | Stable `AgentRuntime` API, replaceable model factory, bounded agent loop |
+| Runtime | Public `AgentRuntime` embedding API, replaceable model factory, bounded agent loop |
+| Context | Explicit per-request message-byte budget; opt-in reducer seam, no automatic compression |
 | Models | Ollama by default; opt-in OpenAI Chat Completions-compatible endpoints |
 | Interface | Local Web console and CLI; Web tasks are read-only or preview-only |
 | Read tools | `list_files`, `read_file`, `search_text` |
@@ -50,7 +52,7 @@ smolagents, Qwen-Agent, nanobot, and Goose.
 | Policy | Per-tool allow/deny and mechanical removal from the tool surface |
 | Observability | SQLite audit, JSONL runtime events, hash-chained execution receipts |
 | Extensions | Explicit, audited Python read tools; optional allowlisted loopback MCP clients |
-| Evaluation | Built-in model smoke test plus versioned external JSON datasets |
+| Evaluation | Task-family summaries and deterministic answer, tool, and file assertions |
 
 ## Quick start
 
@@ -175,6 +177,7 @@ base_url = "http://localhost:11434/v1"
 request_limit = 6
 tool_calls_limit = 8
 max_output_tokens = 2048
+max_context_bytes = 64000 # serialized model-message bytes, not model tokens
 temperature = 0.1
 write_policy = "confirm" # "confirm", "preview", or "deny"
 
@@ -228,6 +231,23 @@ and tool results—including workspace content read by the agent—to that servi
 
 Write tools can be `ask`, `preview`, or `deny`; they can never be configured to
 bypass approval. Read and external-read tools can be `allow` or `deny`.
+
+### Context budget
+
+`max_context_bytes` limits the UTF-8 JSON size of model-bound messages before
+**every** model request, including requests following a tool result. It is a
+portable guard, **not** an exact token count or a guarantee that a provider's
+context window will fit; tool schemas and provider-specific framing are not counted.
+When the limit is exceeded, the run fails clearly and records the size and hash in
+its receipt. The saved conversation remains intact; start a new session or change
+the limit. `MLA_MAX_CONTEXT_BYTES` overrides the local TOML setting.
+
+Trusted Python hosts may explicitly pass `context_reducer=` to `AgentRuntime` for
+future compression strategies. The reducer receives the model-bound messages and
+the byte limit, must preserve the latest message unchanged, and must return a view
+under the limit. Reduced-view hashes are recorded, while the original full history
+is still persisted. No reducer is loaded from configuration or enabled by default.
+Custom reducers must preserve valid tool-call/result pairs.
 
 ## Python read-tool extension
 
@@ -324,17 +344,22 @@ Run a versioned external dataset:
 minimal-agent eval --dataset evals/adversarial.json --model qwen3:8b
 ```
 
-The JSON schema identifier is `minimal-local-agent.eval-dataset.v1`. Each case can
-create isolated fixture files and declare an expected tool, status, answer fragment,
-and forbidden tools. This is a compatibility and regression harness, not a general
-intelligence benchmark.
+The JSON schema identifier remains `minimal-local-agent.eval-dataset.v1`. Cases can
+declare a `family`, isolated fixture `files`, expected tool/status/answer, forbidden
+tools, exact `expected_files`, and `absent_files`. File assertions check the real
+isolated workspace, not the model's claim. Reports group cases by family and show
+success rate plus total-attempt latency and tokens per successful case. If any
+attempt lacks token usage, that token metric is `null` / `n/a`; it is not a money
+price. This is a compatibility and regression harness, not a general intelligence
+benchmark.
 
 ## Security boundary
 
 The runtime enforces:
 
 1. relative paths confined to one resolved workspace, including symlink checks;
-2. fixed model, tool-call, output, file, search, transaction, diff, and MCP limits;
+2. fixed message-byte, model, tool-call, output, file, search, transaction, diff,
+   and MCP limits;
 3. mechanical tool removal for denied capabilities;
 4. exact unique edits, optional source hashes, and stale checks;
 5. one combined diff before any mutation, followed by atomic writes and rollback;
@@ -363,6 +388,7 @@ Unit tests do not require Ollama. `minimal-agent doctor` checks the live endpoin
 minimal-local-agent/
 |-- src/minimal_local_agent/
 |   |-- agent.py       # bounded loop and AgentRuntime
+|   |-- context.py     # per-request budget and explicit reducer seam
 |   |-- read_tools.py  # Python read-tool declarations and audit
 |   |-- models.py      # Ollama and compatible endpoint factories
 |   |-- web.py         # loopback-only Web API
@@ -384,9 +410,8 @@ minimal-local-agent/
 
 The core does not aim to become a universal assistant. Shell/browser tools,
 semantic memory, scheduling, autonomous background work, and multi-agent
-orchestration remain outside v0.8. Future work should focus on better receipt
-signing/export, context compaction, richer deterministic safety datasets, and
-adapter-level extensions that do not enlarge the default trust boundary.
+orchestration remain outside v0.9. The [roadmap](docs/ROADMAP.md) keeps v1.0
+focused on compatibility and release evidence, not a larger tool surface.
 
 ## License
 

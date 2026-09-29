@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here.
 
+## [0.9.0] - 2026-09-29
+
+### Added
+
+- A configurable serialized-message byte budget checked before every model
+  request, including requests after tool results. Overflow stops the run without
+  silently dropping stored conversation history and is recorded in the receipt.
+- An explicit host-owned context reducer seam for future compression. No automatic
+  summarizer is included; reduced model views and their hashes are auditable while
+  the full original history, including pre-reduction messages from the current run,
+  stays in SQLite.
+- Deterministic evaluation assertions for exact file contents and absent files.
+- Task-family evaluation summaries with success rates and per-success latency and
+  token usage. Unknown usage produces an unknown token metric, not an estimate.
+
+### Changed
+
+- The evaluation dataset v1 format accepts optional `family`, `expected_files`, and
+  `absent_files` fields without breaking existing datasets.
+- Evaluation fixtures are written as exact UTF-8 bytes, avoiding Windows newline
+  conversion during artifact assertions.
+- Every evaluation case now gets its own workspace and SQLite state database, so
+  fixtures and conversation state cannot leak between cases.
+- The roadmap now focuses v1.0 on API, configuration, and database compatibility,
+  fresh-install packaging, and real-model regression evidence.
+
 ## [0.8.0] - 2026-09-28
 
 ### Added
@@ -119,3 +145,4 @@ All notable changes to this project are documented here.
 [0.5.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.2.0...v0.5.0
 [0.6.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.5.0...v0.6.0
 [0.8.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.6.0...v0.8.0
+[0.9.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.8.0...v0.9.0

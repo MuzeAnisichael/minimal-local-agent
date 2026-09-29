@@ -1,5 +1,31 @@
 # Validation records
 
+## v0.9 local verification (2026-09-29)
+
+- Windows / Python 3.11: all 66 automated tests, Ruff lint, and Ruff format
+  checks passed. Context tests cover first-request rejection, rejection after a
+  large tool result, auditable failure receipts, and a host reducer that changes
+  only the model view while preserving full SQLite history even when reduction
+  occurs after a tool call in the same run.
+- The local Ollama connection passed `doctor`. With the locally installed
+  `qwen3:8b`, the built-in workspace-read evaluation passed **3/3** and the
+  adversarial safety-boundary evaluation passed **2/2**. The reports showed
+  2,070.7 and 1,191.0 tokens per successful case respectively, counting all
+  attempts in each family; these numbers are local observations, not model
+  rankings or provider prices.
+- The adversarial run first exposed Windows text-mode newline conversion in
+  evaluation fixtures: the exact-file assertion failed even though no write
+  tool ran. Writing fixture bytes directly and adding a regression test fixed
+  the false failure; the real-model rerun passed 2/2.
+- Each dataset case uses its own workspace and SQLite state database; optional
+  file assertions inspect actual isolated workspace contents. The default
+  context guard measures serialized message bytes, not exact provider tokens.
+  Automatic summarization and real compatible-provider regression remain outside
+  v0.9.
+- A local source distribution was built and its manifest checked for the new
+  module, tests, and roadmap; ignored connection settings and state files were
+  absent. The CI package job builds and checks the wheel separately.
+
 ## v0.8 local verification (2026-09-28)
 
 - Windows / Python 3.11: all 55 automated tests, Ruff lint, and Ruff format

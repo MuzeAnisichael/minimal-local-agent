@@ -23,7 +23,8 @@ The runtime therefore:
 - supports preview-only runs and revalidates every file before replacement;
 - rolls back partially applied transactions and rejects stale undo operations;
 - denies writes automatically in non-interactive environments;
-- caps model turns, tool calls, output tokens, files, searches, transactions, diffs,
+- caps serialized model-message bytes before every model request, as well as
+  model turns, tool calls, output tokens, files, searches, transactions, diffs,
   and MCP results;
 - restricts optional MCP clients to loopback HTTP endpoints with explicit tool
   allowlists and no server instructions, sampling, elicitation, or roots;
@@ -60,6 +61,17 @@ The former raw `AgentRuntime(toolsets=..., external_tools=...)` hook was removed
 because those toolsets could bypass policy and audit. Audit and receipts store
 argument names/hashes and result sizes/hashes, while model conversation history
 can still contain complete tool results. A remote model receives those results.
+
+## Context boundary
+
+`max_context_bytes` counts serialized message bytes, not provider tokens or the
+full wire request. Provider framing, tool schemas, and exact tokenizer behavior can
+still exceed a model's context window. The default overflow behavior refuses the
+request and leaves saved history intact. A host-provided `context_reducer` is
+trusted Python code: it may change what the model sees, but cannot delete the
+persisted original conversation. Reduction sizes and hashes enter receipts. A
+custom reducer must preserve the latest message and valid tool-call/result pairs;
+the runtime does not prove that its summary is faithful.
 
 ## MCP boundary
 

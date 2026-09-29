@@ -1,7 +1,8 @@
 # Comparison: small and local agent systems
 
-Research date: 2026-08-10. This comparison uses official project documentation
-and repositories. “Trade-off” describes scope and responsibility, not a defect.
+External-project research date: 2026-08-10; this project's status was updated for
+v0.9. The comparison uses official project documentation and repositories.
+“Trade-off” describes scope and responsibility, not a defect.
 
 ## Short conclusion
 
@@ -20,7 +21,7 @@ verifiable local-agent kernel**:
 
 | Project | Optimizes for | Main strengths | Trade-off relative to this project |
 |---|---|---|---|
-| Minimal Local Agent | Verifiable local filesystem work | Small policy-compiled surface, transactional edits/undo, receipts, local eval, guarded MCP | No shell, UI, channels, browser, semantic memory, remote MCP, or multi-agent support |
+| Minimal Local Agent | Verifiable local filesystem work | Small policy-compiled surface, transactional edits/undo, receipts, local Web, task-family eval, guarded MCP | No shell, channels, browser, semantic memory, remote MCP, or multi-agent support; Web writes remain preview-only |
 | [smolagents](https://huggingface.co/docs/smolagents/main/index) | Minimal programmable agent library | Concise API, model/tool independence, capable code agents, local models, MCP | Persistence, workspace policy, and durable audit remain application responsibilities; code execution needs stronger isolation for hostile workloads |
 | [Qwen-Agent](https://qwenlm.github.io/Qwen-Agent/en/guide/get_started/features/) | Feature-rich agents around Qwen | Qwen tool parsing, parallel/multi-step calls, RAG, built-in tools, MCP, streaming, Gradio | Broader and more model-centric; least-privilege filesystem policy and receipts are application concerns |
 | [nanobot](https://github.com/HKUDS/nanobot) | Lightweight self-hosted personal assistant | Channels, web UI, memory, scheduling, MCP, shell/web/file tools, sub-agents | Much larger credential, process, network, and operational boundary |
@@ -94,7 +95,7 @@ instructions or model sampling, and bounded results.
 - scope is bounded text-file work, not general desktop or personal assistance;
 - exact replacement is narrower than arbitrary patch syntax;
 - SQLite history is not semantic long-term memory;
-- no token streaming or graphical interface;
+- no token streaming; the local Web interface cannot approve writes;
 - current datasets are regression smoke tests, not statistical benchmarks;
 - MCP is loopback HTTP only and trusts the operator's read-only allowlist;
 - no process/container sandbox because no process tool is exposed.
@@ -107,9 +108,12 @@ instructions or model sampling, and bounded results.
 | v0.3 | Transactional exact edits, dry run, rollback, undo | Safer editing without arbitrary patch parsing | Bound file count and complete diff |
 | v0.4 | Runtime API, policy engine, events, migrations, receipts | Explicit embedding and verification | Strong tamper evidence requires saving the chain head externally |
 | v0.5 | Loopback allowlisted MCP and external eval datasets | Measured extension points | No implicit tools or remote MCP |
-| Next | Signed receipt export | Portable verification | Key custody remains outside the model boundary |
-| Next | Provenance-preserving context compaction | Longer useful sessions | No opaque semantic memory |
-| Later | Async streaming with complete persistence | Lower perceived latency | Final history and receipts remain complete |
+| v0.6 | Local Web and compatible endpoint adapter | Usable UI and explicit provider choice | Web cannot approve writes |
+| v0.8 | Audited Python read-tool declarations | Small host-owned extension point | Trusted code is not sandboxed |
+| v0.9 | Message-byte guard and task-family artifact checks | Bounded context and stronger regression evidence | No automatic compression or model self-grading |
+| v1.0 gate | API/data compatibility, clean install, real-model regression | Stable distribution evidence | No default orchestration expansion |
+
+See the [roadmap](ROADMAP.md) for the release criteria.
 
 ## Admission rule for new capabilities
 
