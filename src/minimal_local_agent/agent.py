@@ -85,6 +85,9 @@ class AgentDependencies:
     max_context_bytes: int
     context_reducer: ContextReducer | None
     context_checks: list[dict[str, Any]]
+    saved_history_length: int
+    full_run_messages: list[ModelMessage]
+    last_model_view: tuple[ModelMessage, ...] | None = None
 
     def record_tool_event(
         self,
@@ -120,9 +123,37 @@ def _usage_dict(value: Any) -> dict[str, Any]:
     return {"summary": str(value)}
 
 
+def _capture_run_messages(
+    deps: AgentDependencies, messages: list[ModelMessage]
+) -> None:
+    """Keep new messages before PydanticAI replaces history with a model view."""
+
+    previous_view = deps.last_model_view
+    if previous_view is None:
+        start = deps.saved_history_length
+    else:
+        start = len(previous_view)
+        if len(messages) < start or any(
+            current is not previous
+            for current, previous in zip(messages, previous_view, strict=False)
+        ):
+            raise RuntimeError(
+                "Model history changed unexpectedly during context reduction"
+            )
+    if len(messages) < start:
+        raise RuntimeError("Model history is shorter than saved conversation")
+    # Copy before passing the view to trusted reducer code, which may mutate it.
+    deps.full_run_messages.extend(
+        ModelMessagesTypeAdapter.validate_json(
+            ModelMessagesTypeAdapter.dump_json(messages[start:])
+        )
+    )
+
+
 def _prepare_history(
     ctx: RunContext[AgentDependencies], messages: list[ModelMessage]
 ) -> list[ModelMessage]:
+    _capture_run_messages(ctx.deps, messages)
     try:
         selected = select_context(
             messages, ctx.deps.max_context_bytes, ctx.deps.context_reducer
@@ -139,6 +170,7 @@ def _prepare_history(
     ctx.deps.context_checks.append(details)
     if selected.details["reduced"]:
         ctx.deps.events.emit("context.reduced", details)
+    ctx.deps.last_model_view = tuple(selected.messages)
     return selected.messages
 
 
@@ -338,7 +370,7 @@ def build_agent(
 
 
 class AgentRuntime:
-    """Stable embedding API for one model, policy, workspace, and audit store."""
+    """Explicit embedding API for one model, policy, workspace, and audit store."""
 
     def __init__(
         self,
@@ -463,6 +495,8 @@ class AgentRuntime:
             max_context_bytes=self.settings.max_context_bytes,
             context_reducer=self.context_reducer,
             context_checks=context_checks,
+            saved_history_length=len(history),
+            full_run_messages=[],
         )
 
         try:
@@ -478,8 +512,9 @@ class AgentRuntime:
             )
             response = str(result.output)
             usage = _usage_dict(result.usage)
+            _capture_run_messages(dependencies, result.all_messages())
             serialized = ModelMessagesTypeAdapter.dump_json(
-                [*history, *result.new_messages()]
+                [*history, *dependencies.full_run_messages]
             ).decode("utf-8")
             self.store.save_history(session_id, serialized)
         except Exception as exc:

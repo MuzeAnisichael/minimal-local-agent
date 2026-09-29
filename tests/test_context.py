@@ -123,3 +123,29 @@ def test_budget_is_checked_again_after_a_tool_result(tmp_path: Path) -> None:
         "ok",
         "rejected",
     ]
+
+
+def test_reduction_after_tool_keeps_full_current_run_history(tmp_path: Path) -> None:
+    def payload(_ctx: RunContext[AgentDependencies]) -> str:
+        """Return a small read-only result."""
+        return "payload result"
+
+    runtime = AgentRuntime(
+        _settings(tmp_path, max_context_bytes=2400),
+        model_factory=_ModelFactory(["payload"]),
+        read_tools=(ReadTool("payload", payload),),
+        context_reducer=lambda messages, _limit: messages[-2:],
+    )
+
+    outcome = runtime.run("P" * 1000)
+
+    saved = runtime.store.load_history(outcome.session_id)
+    assert saved is not None
+    assert "P" * 1000 in saved
+    assert "payload result" in saved
+    assert len(ModelMessagesTypeAdapter.validate_json(saved)) == 4
+    receipt = runtime.store.get_receipts(outcome.session_id)[0]["receipt"]
+    assert [check["status"] for check in receipt["context_checks"]] == [
+        "ok",
+        "reduced",
+    ]
