@@ -4,9 +4,7 @@ from dataclasses import replace
 
 from pydantic_ai import RunContext
 
-from minimal_local_agent import AgentRuntime, ReadTool
-from minimal_local_agent.agent import AgentDependencies
-from minimal_local_agent.config import Settings
+from minimal_local_agent import AgentDependencies, AgentRuntime, ReadTool, Settings
 
 
 def count_files(ctx: RunContext[AgentDependencies]) -> dict[str, int]:
