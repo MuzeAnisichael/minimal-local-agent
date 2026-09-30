@@ -111,11 +111,15 @@ class AuditStore:
     @staticmethod
     def _migrate(connection: sqlite3.Connection) -> None:
         current = int(connection.execute("PRAGMA user_version").fetchone()[0])
-        for version, sql in MIGRATIONS:
-            if version <= current:
-                continue
-            connection.executescript(sql)
-            connection.execute(f"PRAGMA user_version = {version}")
+        pending = "\n".join(
+            f"{sql}\nPRAGMA user_version = {version};"
+            for version, sql in MIGRATIONS
+            if version > current
+        )
+        if pending:
+            # executescript otherwise commits each DDL before the version update.
+            # _connection rolls back the entire upgrade if any statement fails.
+            connection.executescript(f"BEGIN IMMEDIATE;\n{pending}\nCOMMIT;")
 
     @property
     def schema_version(self) -> int:
@@ -124,9 +128,20 @@ class AuditStore:
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=10)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
+        try:
+            current = int(connection.execute("PRAGMA user_version").fetchone()[0])
+            supported = MIGRATIONS[-1][0]
+            if current > supported:
+                raise ValueError(
+                    f"Database schema {current} is newer than supported {supported}; "
+                    "use a newer Minimal Local Agent version"
+                )
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA journal_mode = WAL")
+        except Exception:
+            connection.close()
+            raise
         return connection
 
     @contextmanager
