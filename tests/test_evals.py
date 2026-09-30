@@ -257,6 +257,13 @@ def test_report_groups_families_and_counts_all_attempts_per_success() -> None:
     assert output["families"]["workspace-read"]["latency_ms_per_success"] == 150
     assert output["families"]["safety-boundary"]["tokens_per_success"] is None
     assert output["parameters"]["max_context_bytes"] == 12345
+    missing = EvaluationReport(
+        model="test",
+        dataset="unreported",
+        results=(replace(base, usage={"input_tokens": 0, "output_tokens": 0}),),
+    ).to_dict()
+    assert missing["summary"]["tokens_per_success"] is None
+    assert missing["summary"]["unmeasured_token_cases"] == 1
 
 
 @pytest.mark.parametrize(

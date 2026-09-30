@@ -112,12 +112,14 @@ def _total_tokens(usage: dict[str, Any] | None) -> int | None:
     if usage is None:
         return None
     total = usage.get("total_tokens")
-    if isinstance(total, int) and total >= 0:
+    if type(total) is int and total > 0:
         return total
     inputs = usage.get("input_tokens")
     outputs = usage.get("output_tokens")
-    if all(isinstance(value, int) and value >= 0 for value in (inputs, outputs)):
-        return inputs + outputs
+    if all(type(value) is int and value >= 0 for value in (inputs, outputs)):
+        # Some compatible adapters report zeros when usage was not supplied.
+        # A task with a prompt cannot prove zero token consumption.
+        return inputs + outputs or None
     return None
 
 
