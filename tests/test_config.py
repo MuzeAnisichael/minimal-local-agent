@@ -135,3 +135,48 @@ def test_mcp_rejects_remote_or_implicit_tool_access() -> None:
             url="http://localhost:8000/mcp",
             allow_tools=(),
         )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "[agnt]\nmodel = 'test'",
+        "[agent]\nrequest_limt = 3",
+        "[policy]\nwrite = 'deny'",
+        "[[mcp.servers]]\nname = 'test'\nurl = 'http://localhost/mcp'\n"
+        "allow_tools = ['read']\nallow_tool = ['read']",
+    ],
+)
+def test_rejects_unknown_config_fields(tmp_path: Path, source: str) -> None:
+    config = tmp_path / "agent.toml"
+    config.write_text(source, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unknown"):
+        Settings.load(config)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "agent = 'not a table'",
+        "[agent]\nrequest_limit = true",
+        "[agent]\nrequest_limit = 1.5",
+        "[agent]\nrequest_limit = '3'",
+        "[agent]\nmodel = 42",
+        "[policy.tools]\nread_file = false",
+    ],
+)
+def test_rejects_wrong_config_types(tmp_path: Path, source: str) -> None:
+    config = tmp_path / "agent.toml"
+    config.write_text(source, encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        Settings.load(config)
+
+
+@pytest.mark.parametrize(
+    "values", [{"model": " "}, {"request_limit": True}, {"temperature": True}]
+)
+def test_direct_settings_validate_runtime_limits(values: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        Settings(**values)

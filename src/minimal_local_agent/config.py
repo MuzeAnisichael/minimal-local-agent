@@ -20,6 +20,41 @@ WRITE_TOOLS = frozenset({"write_file", "edit_files"})
 _MCP_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 _MCP_TOOL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_TOML_FIELDS = {
+    "agent": {
+        "model": str,
+        "base_url": str,
+        "provider": str,
+        "api_key_env": str,
+        "request_limit": int,
+        "tool_calls_limit": int,
+        "max_output_tokens": int,
+        "max_context_bytes": int,
+        "temperature": (int, float),
+        "write_policy": str,
+    },
+    "paths": {"workspace": str, "database": str},
+    "tools": {
+        "max_file_bytes": int,
+        "max_list_results": int,
+        "max_search_results": int,
+        "max_search_files": int,
+        "max_transaction_files": int,
+        "max_diff_chars": int,
+        "max_mcp_result_chars": int,
+    },
+    "policy": {"tools": dict},
+    "mcp": {"servers": list},
+}
+
+
+def _validate_fields(table: dict[str, Any], name: str, fields: dict[str, Any]) -> None:
+    unknown = sorted(table.keys() - fields.keys())
+    if unknown:
+        raise ValueError(f"Unknown {name} field(s): {', '.join(unknown)}")
+    for key, value in table.items():
+        if isinstance(value, bool) or not isinstance(value, fields[key]):
+            raise ValueError(f"Invalid type for {name}.{key}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +80,7 @@ class MCPServerSettings:
                 "or fragment"
             )
         if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
-            raise ValueError(f"MCP server {self.name} must be loopback-only in v0.5")
+            raise ValueError(f"MCP server {self.name} must be loopback-only")
         if not self.allow_tools:
             raise ValueError(f"MCP server {self.name} requires allow_tools")
         if len(self.allow_tools) != len(set(self.allow_tools)):
@@ -117,6 +152,10 @@ class Settings:
     mcp_servers: tuple[MCPServerSettings, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.model, str) or not self.model.strip():
+            raise ValueError("model cannot be empty")
+        if not isinstance(self.base_url, str):
+            raise ValueError("base_url must be a valid http(s) URL")
         parsed = urlparse(self.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("base_url must be a valid http(s) URL")
@@ -147,9 +186,14 @@ class Settings:
             "max_diff_chars",
             "max_mcp_result_chars",
         ):
-            if getattr(self, name) < 1:
-                raise ValueError(f"{name} must be at least 1")
-        if not 0 <= self.temperature <= 2:
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if (
+            isinstance(self.temperature, bool)
+            or not isinstance(self.temperature, (int, float))
+            or not 0 <= self.temperature <= 2
+        ):
             raise ValueError("temperature must be between 0 and 2")
         if self.write_policy not in WRITE_POLICIES:
             allowed = ", ".join(sorted(WRITE_POLICIES))
@@ -190,18 +234,18 @@ class Settings:
         else:
             base_dir = Path.cwd().resolve()
 
+        _validate_fields(raw, "configuration", dict.fromkeys(_TOML_FIELDS, dict))
+        for name, fields in _TOML_FIELDS.items():
+            _validate_fields(raw.get(name, {}), name, fields)
+
         agent = raw.get("agent", {})
         paths = raw.get("paths", {})
         tools = raw.get("tools", {})
         policy = raw.get("policy", {})
         mcp = raw.get("mcp", {})
-        if not all(
-            isinstance(section, dict) for section in (agent, paths, tools, policy, mcp)
-        ):
-            raise ValueError("agent, paths, tools, policy, and mcp must be TOML tables")
         policy_tools = policy.get("tools", {})
-        if not isinstance(policy_tools, dict):
-            raise ValueError("policy.tools must be a TOML table")
+        if not all(isinstance(decision, str) for decision in policy_tools.values()):
+            raise ValueError("policy.tools must map tool names to string decisions")
 
         tool_policies = {
             str(name).strip(): str(decision).strip().casefold()
@@ -219,6 +263,9 @@ class Settings:
             raise ValueError("mcp.servers must be an array of TOML tables")
         mcp_servers: list[MCPServerSettings] = []
         for server in raw_servers:
+            _validate_fields(
+                server, "mcp.servers", {"name": str, "url": str, "allow_tools": list}
+            )
             allow_tools = server.get("allow_tools", [])
             if not isinstance(allow_tools, list) or not all(
                 isinstance(tool, str) for tool in allow_tools
