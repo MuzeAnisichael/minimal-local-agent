@@ -163,6 +163,8 @@ def test_evaluation_cases_have_independent_workspaces(
 
     assert report.passed == 2
     assert all(result.artifact_failures == () for result in report.results)
+    assert report.to_dict()["schema"] == "minimal-local-agent.eval-report.v1"
+    assert report.to_dict()["provider"] == "ollama"
 
 
 def test_artifact_checks_require_workspace_and_reject_escape(tmp_path: Path) -> None:
@@ -255,3 +257,39 @@ def test_report_groups_families_and_counts_all_attempts_per_success() -> None:
     assert output["families"]["workspace-read"]["latency_ms_per_success"] == 150
     assert output["families"]["safety-boundary"]["tokens_per_success"] is None
     assert output["parameters"]["max_context_bytes"] == 12345
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"expect_files": {"safe.txt": "safe"}},
+        {"expected_status": []},
+        {"files": {"../escape.txt": "unsafe"}},
+        {"expected_files": {"C:/absolute.txt": "unsafe"}},
+        {"absent_files": ["nested\\unsafe.txt"]},
+    ],
+)
+def test_dataset_rejects_misspelled_assertions_and_invalid_paths(
+    tmp_path: Path, extra: dict[str, object]
+) -> None:
+    source = tmp_path / "cases.json"
+    source.write_text(
+        json.dumps(
+            {
+                "schema": DATASET_SCHEMA,
+                "name": "invalid",
+                "cases": [
+                    {
+                        "name": "case",
+                        "prompt": "inspect",
+                        "expected_text": "done",
+                        **extra,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError):
+        load_evaluation_dataset(source)

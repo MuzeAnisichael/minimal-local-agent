@@ -6,9 +6,10 @@ import json
 import tempfile
 import time
 from dataclasses import asdict, dataclass, replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
+from minimal_local_agent import __version__
 from minimal_local_agent.config import Settings
 from minimal_local_agent.runtime import AgentRuntime
 from minimal_local_agent.security import WorkspaceGuard
@@ -17,6 +18,7 @@ EVALUATION_REQUEST_LIMIT = 4
 EVALUATION_TOOL_CALLS_LIMIT = 4
 EVALUATION_MAX_OUTPUT_TOKENS = 4096
 DATASET_SCHEMA = "minimal-local-agent.eval-dataset.v1"
+REPORT_SCHEMA = "minimal-local-agent.eval-report.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +63,7 @@ class EvaluationReport:
     dataset: str
     results: tuple[EvaluationResult, ...]
     max_context_bytes: int = 64_000
+    provider: str = "ollama"
 
     @property
     def passed(self) -> int:
@@ -84,6 +87,9 @@ class EvaluationReport:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema": REPORT_SCHEMA,
+            "runtime_version": __version__,
+            "provider": self.provider,
             "model": self.model,
             "dataset": self.dataset,
             "passed": self.passed,
@@ -185,6 +191,9 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
         raise ValueError(f"Invalid evaluation dataset JSON: {exc}") from exc
     if not isinstance(raw, dict) or raw.get("schema") != DATASET_SCHEMA:
         raise ValueError(f"Dataset schema must be {DATASET_SCHEMA!r}")
+    unknown = sorted(raw.keys() - {"schema", "name", "cases"})
+    if unknown:
+        raise ValueError(f"Unknown dataset field(s): {', '.join(unknown)}")
     name = raw.get("name")
     values = raw.get("cases")
     if not isinstance(name, str) or not name.strip():
@@ -196,12 +205,15 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
     for index, value in enumerate(values, start=1):
         if not isinstance(value, dict):
             raise ValueError(f"Dataset case {index} must be an object")
+        unknown = sorted(value.keys() - EvaluationCase.__dataclass_fields__.keys())
+        if unknown:
+            raise ValueError(f"Unknown case {index} field(s): {', '.join(unknown)}")
         files = value.get("files", {})
         expected_files = value.get("expected_files", {})
         absent_files = value.get("absent_files", [])
         forbidden = value.get("forbidden_tools", [])
         if not isinstance(files, dict) or not all(
-            isinstance(key, str) and isinstance(item, str)
+            isinstance(key, str) and key.strip() and isinstance(item, str)
             for key, item in files.items()
         ):
             raise ValueError(f"Dataset case {index} files must map strings to strings")
@@ -220,8 +232,17 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
             absent_files
         ):
             raise ValueError(f"Dataset case {index} has conflicting artifact paths")
+        for path in (*files, *expected_files, *absent_files):
+            parsed = PurePosixPath(path)
+            if (
+                parsed.is_absolute()
+                or not parsed.parts
+                or ".." in parsed.parts
+                or any(character in path for character in ("\\", ":", "\x00"))
+            ):
+                raise ValueError(f"Dataset case {index} requires relative POSIX paths")
         if not isinstance(forbidden, list) or not all(
-            isinstance(item, str) for item in forbidden
+            isinstance(item, str) and item.strip() for item in forbidden
         ):
             raise ValueError(f"Dataset case {index} forbidden_tools must be strings")
         required = ("name", "prompt", "expected_text")
@@ -231,7 +252,12 @@ def load_evaluation_dataset(path: str | Path) -> EvaluationDataset:
         ):
             raise ValueError(f"Dataset case {index} has an empty required field")
         expected_status = value.get("expected_status", "ok")
-        if expected_status not in {"ok", "error", "denied", "preview"}:
+        if not isinstance(expected_status, str) or expected_status not in {
+            "ok",
+            "error",
+            "denied",
+            "preview",
+        }:
             raise ValueError(f"Dataset case {index} has an invalid expected_status")
         expected_tool = value.get("expected_tool")
         family = value.get("family", "general")
@@ -408,11 +434,13 @@ def evaluate_model(
         dataset=dataset.name,
         results=tuple(results),
         max_context_bytes=settings.max_context_bytes,
+        provider=settings.provider,
     )
 
 
 __all__ = [
     "DATASET_SCHEMA",
+    "REPORT_SCHEMA",
     "EvaluationCase",
     "EvaluationDataset",
     "EvaluationReport",
