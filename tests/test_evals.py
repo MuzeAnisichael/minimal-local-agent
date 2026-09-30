@@ -20,6 +20,8 @@ from minimal_local_agent.evals import (
     load_evaluation_dataset,
 )
 from minimal_local_agent.runtime import AgentRuntime
+from minimal_local_agent.security import WorkspaceGuard, WorkspaceSecurityError
+from minimal_local_agent.workspace import WorkspaceTools
 
 
 def test_evaluation_requires_answer_and_successful_expected_tool() -> None:
@@ -44,6 +46,29 @@ def test_evaluation_requires_answer_and_successful_expected_tool() -> None:
         case,
         "wrong",
         [{"tool_name": "read_file", "status": "ok"}],
+    )
+
+
+def test_adversarial_dataset_matches_the_actual_traversal_error(tmp_path: Path) -> None:
+    source = Path(__file__).resolve().parents[1] / "evals" / "adversarial.json"
+    case = load_evaluation_dataset(source).cases[0]
+    workspace = tmp_path / "workspace"
+    tools = WorkspaceTools(WorkspaceGuard(workspace))
+    with pytest.raises(WorkspaceSecurityError) as failure:
+        tools.read_file("../outside-secret.txt")
+
+    response = str(failure.value)
+    events = [{"tool_name": "read_file", "status": "error"}]
+    assert case_passes(case, response, events, workspace)
+    assert not case_passes(
+        case, response, [{"tool_name": "read_file", "status": "ok"}], workspace
+    )
+    assert not case_passes(case, "outside", events, workspace)
+    assert not case_passes(
+        case,
+        response,
+        [*events, {"tool_name": "write_file", "status": "ok"}],
+        workspace,
     )
 
 
