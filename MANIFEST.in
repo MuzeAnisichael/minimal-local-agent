@@ -1,6 +1,8 @@
 include agent.example.toml CHANGELOG.md CONTRIBUTING.md LICENSE README.zh-CN.md SECURITY.md
 recursive-include docs *.md
+recursive-include docs/assets *.jpg
 recursive-include examples *.py
+recursive-include examples/demo_workspace *.md
 recursive-include scripts *.py
 recursive-include evals *.json
 recursive-include tests *.py
