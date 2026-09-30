@@ -1,0 +1,49 @@
+name: Bug report / 问题反馈
+description: Report a reproducible failure with a small, sanitized example.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please use disposable sample files. Do not post API keys, real service URLs,
+        private paths, file contents, or unreviewed database/log exports.
+        For vulnerabilities, follow SECURITY.md instead of opening a public issue.
+
+        请使用临时示例文件，不要公开密钥、真实服务地址、个人路径、文件内容或未经检查的日志。
+        安全漏洞请按 SECURITY.md 私下报告。
+  - type: input
+    id: version
+    attributes:
+      label: Version / 版本
+      description: Output of minimal-agent --version, or the source commit.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 运行环境
+      description: OS, Python version, CLI or Web, and generic provider/model name. No real connection URLs.
+      placeholder: "Windows, Python 3.11, Web, Ollama, a tool-capable model"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Smallest reproduction / 最小复现
+      description: Steps, synthetic fixture files, and relevant non-secret settings.
+      placeholder: "Create sample files, run one command, inspect the result."
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior / 预期与实际结果
+      description: Include whether files changed, the tool status, or any visible error.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized evidence / 已脱敏的证据
+      description: Optional short error text or cropped screenshots. Review all content before sharing.

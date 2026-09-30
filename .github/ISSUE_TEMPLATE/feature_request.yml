@@ -1,0 +1,34 @@
+name: Small improvement / 改进建议
+description: Suggest a focused improvement that keeps the kernel small.
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Prefer a small fix, example, or host-owned extension over a new default capability.
+        Please read the roadmap and comparison admission rule first.
+        Keep personal connection information out of this issue.
+
+        优先考虑小型修复、示例或宿主扩展，而非增加默认能力。
+        请先看路线图与能力准入规则，不要提交个人连接信息。
+  - type: textarea
+    id: problem
+    attributes:
+      label: Concrete task or problem / 具体任务或问题
+      description: What is difficult today? Explain the use case, not just a feature name.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Smallest useful change / 最小可用改进
+      description: Can documentation, an example, ReadTool, ModelFactory, or a reducer solve it?
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Boundaries and verification / 边界与验证
+      description: Explain permissions, data/privacy, compatibility, and a way to test success. State when a concern does not apply.
+    validations:
+      required: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation / 使用文档
+    url: https://github.com/MuzeAnisichael/minimal-local-agent/tree/main/docs
+    about: Start with the bilingual guide, configuration reference, and troubleshooting.
+  - name: Security policy / 安全报告
+    url: https://github.com/MuzeAnisichael/minimal-local-agent/security/policy
+    about: Do not publish unpatched vulnerabilities or secret-bearing evidence in an issue.
