@@ -9,15 +9,17 @@ reversible edits, and no shell.**
 
 [简体中文](README.zh-CN.md) · [Comparison](docs/COMPARISON.md) ·
 [Validation](docs/VALIDATION.md) · [Roadmap](docs/ROADMAP.md) ·
-[Security](SECURITY.md)
+[v1 compatibility](docs/COMPATIBILITY.md) · [Security](SECURITY.md)
 
 Minimal Local Agent uses PydanticAI with Ollama by default or an explicitly
 configured OpenAI Chat Completions-compatible endpoint. It confines file tools to
 one workspace and persists sessions, audit events, reversible changes, and
 hash-chained execution receipts in SQLite.
 
-Version `0.9.0` is an alpha release. The runtime enforces its boundaries in code;
-model output and configured MCP servers remain untrusted inputs.
+Version `1.0.0` is the stable release of this deliberately bounded kernel. Public
+extension signatures and data compatibility are documented for 1.x. The runtime
+enforces its boundaries in code; model output and configured MCP servers remain
+untrusted inputs. Stable does not mean every provider/model behaves identically.
 
 ## Why it is different
 
@@ -38,11 +40,11 @@ This project optimizes for a trust boundary that can be understood in one sittin
 See the [project comparison](docs/COMPARISON.md) for the trade-offs relative to
 smolagents, Qwen-Agent, nanobot, and Goose.
 
-## v0.9 capabilities
+## v1.0 capabilities
 
 | Area | Included |
 |---|---|
-| Runtime | Public `AgentRuntime` embedding API, replaceable model factory, bounded agent loop |
+| Runtime | Stable `AgentRuntime` embedding API, replaceable model factory, bounded agent loop |
 | Context | Explicit per-request message-byte budget; opt-in reducer seam, no automatic compression |
 | Models | Ollama by default; opt-in OpenAI Chat Completions-compatible endpoints |
 | Interface | Local Web console and CLI; Web tasks are read-only or preview-only |
@@ -59,6 +61,12 @@ smolagents, Qwen-Agent, nanobot, and Goose.
 Requirements: Python 3.11+ and a configured model supporting tool calling. The
 quick start below uses [Ollama](https://ollama.com/) as the default.
 
+For a versioned install, download the wheel from the
+[v1.0.0 release](https://github.com/MuzeAnisichael/minimal-local-agent/releases/tag/v1.0.0)
+and run `python -m pip install minimal_local_agent-1.0.0-py3-none-any.whl` in a
+virtual environment. No PyPI publication is assumed. Cloning below is convenient
+for customization; check out `v1.0.0` before installation to pin that release.
+
 ### Windows PowerShell
 
 ```powershell
@@ -66,7 +74,7 @@ git clone https://github.com/MuzeAnisichael/minimal-local-agent.git
 Set-Location minimal-local-agent
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install -e .
 ollama pull qwen3.5:9b
 Copy-Item agent.example.toml agent.toml
 minimal-agent doctor
@@ -82,7 +90,7 @@ git clone https://github.com/MuzeAnisichael/minimal-local-agent.git
 cd minimal-local-agent
 python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install -e .
 ollama pull qwen3.5:9b
 cp agent.example.toml agent.toml
 minimal-agent doctor
@@ -106,6 +114,10 @@ history, runtime events, and receipt-chain status. It listens only on loopback a
 does not expose confirmed file writes; use the interactive CLI when you want to
 approve and apply a complete diff. It works on small screens, but is intended as a
 local desktop interface, not a remotely exposed service.
+
+The Web server accepts one active task at a time and returns HTTP 409 for overlap.
+CLI/Python hosts must also serialize tasks sharing a workspace/database. Independent
+workspaces should use independent databases.
 
 ## CLI
 
@@ -202,6 +214,11 @@ examples are `MLA_PROVIDER`, `MLA_MODEL`, `MLA_BASE_URL`, `MLA_API_KEY_ENV`,
 `MLA_WORKSPACE`, `MLA_DATABASE`,
 `MLA_WRITE_POLICY`, `MLA_DISABLED_TOOLS`, and each `MLA_MAX_*` limit. Relative paths
 are resolved from the configuration file directory.
+
+Configuration precedence is defaults → TOML → environment. Unknown TOML keys and
+incorrect types are rejected instead of silently ignored. Correct v0.9 settings
+remain valid. See the [compatibility and upgrade guide](docs/COMPATIBILITY.md)
+before updating an existing SQLite database; back it up while no runs are active.
 
 ### Other model endpoints
 
@@ -304,8 +321,7 @@ trust and keep their allowlist narrow.
 ## Embedding API and events
 
 ```python
-from minimal_local_agent import AgentRuntime
-from minimal_local_agent.config import Settings
+from minimal_local_agent import AgentRuntime, Settings
 
 runtime = AgentRuntime(Settings.load("agent.toml"))
 outcome = runtime.run(
@@ -321,6 +337,8 @@ Runtime event types include `run.started`, `tool.completed`, `mutation.preview`,
 boundary is replaceable through `model_factory`; trusted host-owned read tools can
 be passed explicitly to `AgentRuntime`. Observer callback failures do not alter the
 agent run and are returned in `outcome.event_handler_errors`.
+The [v1 compatibility contract](docs/COMPATIBILITY.md) defines the supported host
+API, configuration, database upgrades, and data formats.
 
 Execution receipts contain hashes of the endpoint, prompt, and response, plus usage,
 the effective capability manifest, and audit-safe tool metadata. They form a
@@ -348,10 +366,11 @@ The JSON schema identifier remains `minimal-local-agent.eval-dataset.v1`. Cases 
 declare a `family`, isolated fixture `files`, expected tool/status/answer, forbidden
 tools, exact `expected_files`, and `absent_files`. File assertions check the real
 isolated workspace, not the model's claim. Reports group cases by family and show
-success rate plus total-attempt latency and tokens per successful case. If any
-attempt lacks token usage, that token metric is `null` / `n/a`; it is not a money
-price. This is a compatibility and regression harness, not a general intelligence
-benchmark.
+success rate plus total-attempt latency and tokens per successful case. JSON reports
+use `minimal-local-agent.eval-report.v1` and include the runtime version, provider,
+and fixed budgets. Missing or all-zero usage makes the token metric `null` / `n/a`;
+it is not a money price. This is a compatibility and regression harness, not a
+general intelligence benchmark. See the [release results](evals/results/v1.0.json).
 
 ## Security boundary
 
@@ -401,6 +420,7 @@ minimal-local-agent/
 |   `-- evals.py       # versioned evaluation harness
 |-- evals/             # reusable evaluation datasets
 |-- examples/          # minimal host-side extension example
+|-- scripts/           # clean distribution/install smoke check
 |-- tests/
 |-- docs/
 `-- agent.example.toml
@@ -410,8 +430,8 @@ minimal-local-agent/
 
 The core does not aim to become a universal assistant. Shell/browser tools,
 semantic memory, scheduling, autonomous background work, and multi-agent
-orchestration remain outside v0.9. The [roadmap](docs/ROADMAP.md) keeps v1.0
-focused on compatibility and release evidence, not a larger tool surface.
+orchestration remain outside v1.0. The [roadmap](docs/ROADMAP.md) prioritizes
+maintenance and small host-owned adapters, not a larger default tool surface.
 
 ## License
 

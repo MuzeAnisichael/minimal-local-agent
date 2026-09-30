@@ -25,7 +25,7 @@ max_transaction_files = 8
 max_diff_chars = 40000
 max_mcp_result_chars = 100000
 
-# Optional v0.5 MCP clients are loopback-only and expose only explicitly named
+# Optional MCP clients are loopback-only and expose only explicitly named
 # tools. Install support with: pip install -e ".[mcp]"
 # [[mcp.servers]]
 # name = "notes"

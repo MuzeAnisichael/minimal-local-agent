@@ -4,14 +4,15 @@
 
 [English](README.md) · [同类项目对比](docs/COMPARISON.zh-CN.md) ·
 [验证记录](docs/VALIDATION.md) · [路线图](docs/ROADMAP.zh-CN.md) ·
-[安全策略](SECURITY.md)
+[v1 兼容与升级](docs/COMPATIBILITY.md) · [安全策略](SECURITY.md)
 
 Minimal Local Agent 默认通过 PydanticAI 调用 Ollama，也可显式接入兼容 OpenAI Chat
 Completions 的服务。文件工具被限制在一个工作区内，SQLite 保存会话、审计事件、
 可撤销变更和哈希链执行凭证。
 
-当前版本为 `0.9.0` Alpha。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为
-不可信输入。
+当前版本为 `1.0.0` 稳定版，定位是能力有界的轻量内核。1.x 保持文档约定的扩展签名与
+数据兼容。边界由运行时代码执行；模型输出和配置的 MCP 服务仍应视为不可信输入。
+稳定版不意味着每种服务商与模型都有相同表现。
 
 ## 核心差异
 
@@ -24,11 +25,11 @@ Completions 的服务。文件工具被限制在一个工作区内，SQLite 保�
 
 更完整的取舍见[同类项目对比](docs/COMPARISON.zh-CN.md)。
 
-## v0.9 能力
+## v1.0 能力
 
 | 范围 | 已实现 |
 |---|---|
-| 运行时 | 公开的 `AgentRuntime` 嵌入接口、可替换模型工厂、受限单 Agent 循环 |
+| 运行时 | 稳定的 `AgentRuntime` 嵌入接口、可替换模型工厂、受限单 Agent 循环 |
 | 上下文 | 逐次请求的消息字节预算；预留显式压缩接口，默认不自动压缩 |
 | 定制 | 显式注册、受权限与审计约束的 Python 只读工具 |
 | 模型 | 默认 Ollama；可选择兼容 OpenAI Chat Completions 的端点 |
@@ -46,6 +47,12 @@ Completions 的服务。文件工具被限制在一个工作区内，SQLite 保�
 需要 Python 3.11+ 和支持工具调用的模型。以下快速开始采用默认的
 [Ollama](https://ollama.com/)。
 
+若只需要固定版本，可从
+[v1.0.0 发行页](https://github.com/MuzeAnisichael/minimal-local-agent/releases/tag/v1.0.0)
+下载 wheel，在虚拟环境中运行
+`python -m pip install minimal_local_agent-1.0.0-py3-none-any.whl`。
+不依赖 PyPI 发布。下方克隆方式便于二次开发；如需固定版本，安装前切换至 `v1.0.0` 标签。
+
 ### Windows PowerShell
 
 ```powershell
@@ -53,7 +60,7 @@ git clone https://github.com/MuzeAnisichael/minimal-local-agent.git
 Set-Location minimal-local-agent
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install -e .
 ollama pull qwen3.5:9b
 Copy-Item agent.example.toml agent.toml
 minimal-agent doctor
@@ -69,7 +76,7 @@ git clone https://github.com/MuzeAnisichael/minimal-local-agent.git
 cd minimal-local-agent
 python3.11 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install -e .
 ollama pull qwen3.5:9b
 cp agent.example.toml agent.toml
 minimal-agent doctor
@@ -91,6 +98,9 @@ minimal-agent web
 Web 控制台支持只读运行、不会落盘的变更预览、会话历史、运行事件和收据链状态。
 服务只监听本机，并且不会开放需要确认的真实写入；如需查看完整差异并批准写入，
 请使用交互式 CLI。它适配窄屏，但定位仍是本机界面，不应作为公网服务暴露。
+
+Web 一次只接受一个运行中的任务，重叠请求返回 HTTP 409。CLI/Python 宿主也应串行运行
+共享工作区/数据库的任务；独立工作区使用独立数据库。
 
 ## 常用命令
 
@@ -185,6 +195,10 @@ max_mcp_result_chars = 100000
 `MLA_DATABASE`、`MLA_WRITE_POLICY`、
 `MLA_DISABLED_TOOLS` 和各个 `MLA_MAX_*` 上限。相对路径以配置文件目录为基准。
 
+配置优先级为默认值 → TOML → 环境变量。未知 TOML 字段和错误类型会明确报错，
+不再静默忽略；正确的 v0.9 配置仍然有效。升级已有数据库前，停止任务并备份，
+具体支持范围见[兼容与升级说明](docs/COMPATIBILITY.md)。
+
 ### 接入其他模型服务
 
 本地服务器、官方 API 或中转站只要提供兼容 OpenAI Chat Completions 的接口，
@@ -273,8 +287,7 @@ mcp_notes_read_note = "deny"
 ## Python 嵌入与事件
 
 ```python
-from minimal_local_agent import AgentRuntime
-from minimal_local_agent.config import Settings
+from minimal_local_agent import AgentRuntime, Settings
 
 runtime = AgentRuntime(Settings.load("agent.toml"))
 outcome = runtime.run(
@@ -289,6 +302,7 @@ print(outcome.receipt_hash)
 `mutation.applied`、`run.completed` 和 `run.failed`。宿主可通过 `model_factory` 替换模型
 构造，也可显式注册可信只读工具。观察回调失败不会改变 Agent 运行语义，错误会出现在
 `outcome.event_handler_errors` 中。
+稳定的宿主接口、配置、数据库升级和数据格式见[v1 兼容约定](docs/COMPATIBILITY.md)。
 
 执行凭证记录端点/提示词/回复哈希、用量、有效能力清单和适合审计的工具元数据，并按会话
 组成哈希链。内部校验能发现断链或未重算哈希的内容修改；把最后一个哈希另存到 SQLite
@@ -308,8 +322,10 @@ minimal-agent eval --dataset evals/adversarial.json --model qwen3:8b
 JSON schema 仍为 `minimal-local-agent.eval-dataset.v1`。用例可声明任务族 `family`、
 隔离初始文件 `files`、预期工具/状态/回复、禁止工具，以及精确文件内容
 `expected_files` 和不应存在的文件 `absent_files`。产物检查读取真实隔离工作区，
-不依赖模型自述。报告按任务族列出成功率、每成功任务总耗时和 token；有用量缺失时
+不依赖模型自述。JSON 报告使用 `minimal-local-agent.eval-report.v1`，记录版本、服务类型
+和固定预算，按任务族列出成功率、每成功任务总耗时和 token；用量缺失或全为零时
 token 指标显示未知，不伪装成货币价格。这是兼容性与回归测试，不是通用智能排行榜。
+发行评测摘要见 [evals/results/v1.0.json](evals/results/v1.0.json)。
 
 ## 安全边界
 
@@ -342,8 +358,8 @@ pytest
 ## 有意不做的事情
 
 核心不以“万能个人助理”为目标。Shell/浏览器工具、语义记忆、定时调度、后台自治和
-多 Agent 编排不属于 v0.9。后续工作以[路线图](docs/ROADMAP.zh-CN.md)中的兼容性和
-发行验证为主，不靠增加默认工具来扩大内核。
+多 Agent 编排不属于 v1.0。后续工作以[路线图](docs/ROADMAP.zh-CN.md)中的维护和
+小型宿主适配为主，不靠增加默认工具来扩大内核。
 
 ## License
 

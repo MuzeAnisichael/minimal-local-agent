@@ -1,18 +1,19 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "minimal-local-agent"
-version = "0.9.0"
+version = "1.0.0"
 description = "A minimal, auditable local-first AI agent with a local web console."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "MuzeAnisichael" }]
 keywords = ["agent", "ai", "local-first", "ollama", "pydantic-ai", "web"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",

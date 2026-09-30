@@ -2,6 +2,44 @@
 
 All notable changes to this project are documented here.
 
+## [1.0.0] - 2026-09-30
+
+### Added
+
+- A documented 1.x compatibility contract for embedding/extensions, configuration,
+  SQLite upgrades, execution receipts, and evaluation inputs/reports. The package
+  root also exports `Settings`, `MCPServerSettings`, `AgentDependencies`,
+  `ModelFactory`, and `EventHandler` alongside the existing public types.
+- Frozen legacy SQLite fixtures and upgrade-preservation tests for schemas 0/1/2,
+  plus failed-upgrade rollback and future-schema refusal tests.
+- Fresh wheel/source install checks on Linux and Windows covering console entry
+  points, embedding, audited tools, session history, receipts, and packaged Web.
+- Reviewed task-family smoke results for local Ollama and a compatible API.
+
+### Changed
+
+- Version 1.0 is stable for the documented bounded kernel; Python 3.11+ and one
+  active task per database/workspace remain the execution contract.
+- TOML configuration rejects unknown fields and incorrect types. Correct v0.9
+  settings remain valid; previously ignored misspellings must be corrected.
+- Evaluation inputs reject unknown assertions and unsafe/non-POSIX fixture paths
+  before model calls. Reports identify `minimal-local-agent.eval-report.v1`, the
+  runtime version, and provider without adding connection configuration.
+- The Web server returns HTTP 409 for overlapping tasks instead of risking lost
+  session updates. Its run lock is released on both success and failure.
+- Packaging uses SPDX MIT metadata and includes the release-check script.
+
+### Fixed
+
+- Pending SQLite migrations and version markers now commit atomically; a failed
+  upgrade rolls back. A newer database is refused before enabling WAL.
+- All-zero provider token metadata is reported as unknown, not zero-cost usage.
+- The traversal dataset now checks the actual tool error instead of an unrelated
+  word. Its regression test still requires an error event and forbids write tools.
+
+The core retains five built-in tools, no shell/browser/sub-agent orchestration,
+and no default context compression. The explicit reducer extension remains.
+
 ## [0.9.0] - 2026-09-29
 
 ### Added
@@ -146,3 +184,4 @@ All notable changes to this project are documented here.
 [0.6.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.5.0...v0.6.0
 [0.8.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.6.0...v0.8.0
 [0.9.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.8.0...v0.9.0
+[1.0.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.9.0...v1.0.0

@@ -12,6 +12,25 @@ ruff check .
 pytest
 ```
 
+## Release checks
+
+```bash
+python -m pip install build
+python -m build --outdir dist
+python scripts/release_check.py --distributions dist
+```
+
+Use a clean output directory containing exactly one wheel and one source archive.
+The check installs both in separate temporary environments, verifies packaged
+assets and private-file exclusions, and exercises CLI, embedding, audit/history,
+receipts, and Web without a live model. CI also checks the oldest supported
+PydanticAI version and the optional MCP extra. Run real-model evaluations separately
+and publish only reviewed, connection-free summaries.
+
+Read [COMPATIBILITY.md](docs/COMPATIBILITY.md) before changing public signatures,
+configuration fields, SQLite migrations, or evaluation data. A 1.x maintenance
+change must preserve those contracts and include a regression test.
+
 ## Design rules
 
 1. Keep one agent until a measured use case requires orchestration.

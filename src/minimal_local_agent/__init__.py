@@ -12,7 +12,7 @@ from minimal_local_agent.runtime import (
     RuntimeEvent,
 )
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "AgentRuntime",

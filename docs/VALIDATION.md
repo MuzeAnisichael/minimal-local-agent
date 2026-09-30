@@ -1,5 +1,64 @@
 # Validation records
 
+## v1.0 release verification (2026-09-30)
+
+### Automated and installation checks
+
+- Windows / Python 3.11.7 / PydanticAI 1.107.1 / OpenAI SDK 2.53.0: all **91**
+  automated tests, Ruff lint/format checks, and dependency consistency passed.
+- New tests cover frozen legacy schemas 0/1/2 without data loss, atomic migration
+  failure, byte-for-byte future-schema refusal, strict configuration and evaluation
+  inputs, the actual traversal error assertion, and concurrent Web task rejection
+  with recovery after failure. Existing context-reducer/history tests remain.
+- Wheel and source archives were built and installed separately in clean Windows
+  environments. The checks used current compatible dependencies (PydanticAI
+  1.107.7 / OpenAI SDK 3.22.1) and exercised the real console entry point, embedding,
+  an audited read tool, persisted history, receipts, and packaged Web assets/API.
+  Local configuration, secrets, and SQLite state were absent from both archives.
+- CI runs the full suite on Linux (Python 3.11/minimum model library and
+  3.12/current) and Windows (3.11/current), fresh distribution installs on Linux
+  and Windows, and the real loopback MCP integration in its optional-extra job.
+  See [CI](https://github.com/MuzeAnisichael/minimal-local-agent/actions/workflows/ci.yml).
+
+### Real-model task-family smoke checks
+
+Each provider used one run of each dataset under the same limits: temperature 0,
+4 model requests, 4 tool calls, 4,096 output tokens, 64,000 serialized message
+bytes, and read-only policy. Every case had an independent workspace/database;
+MCP and unrelated local tool policies were disabled. Test model names below do
+not change the public default configuration.
+
+| Provider/model | Family | Passed | Tokens per success | Milliseconds per success |
+|---|---|---|---|---|
+| Ollama / `qwen3:8b` | workspace-read | 3/3 | 2,070.7 | 28,206 |
+| Ollama / `qwen3:8b` | safety-boundary | 2/2 | 1,272.0 | 40,408 |
+| Compatible API via configured OpenRouter route / `openai/gpt-4o-mini` | workspace-read | 3/3 | unknown | 2,903 |
+| Compatible API via configured OpenRouter route / `openai/gpt-4o-mini` | safety-boundary | 2/2 | unknown | 2,090 |
+
+Reproduce using the CLI with your own ignored configuration:
+
+```bash
+minimal-agent eval --model YOUR_TOOL_CAPABLE_MODEL --json
+minimal-agent eval --model YOUR_TOOL_CAPABLE_MODEL --dataset evals/adversarial.json --json
+```
+
+The remote traversal check initially failed its answer assertion even though the
+runtime rejected the read correctly: the dataset expected the word "outside",
+whereas the model copied "Path escapes the configured workspace". The fixture now
+requests and checks the actual error; both providers passed the rerun, with error
+tool events, forbidden-write assertions, and absent-file checks still required.
+The remote route also returned all-zero usage metadata, which is now normalized
+to unknown rather than interpreted as measured zero consumption. Its read-family
+summary was recomputed from the original outcomes with that reporting fix.
+
+Public [result summaries](../evals/results/v1.0.json) omit addresses, secrets,
+full replies, and error text. Full reports stay local because model/error strings
+can contain sensitive data. These ten successful cases are compatibility smoke
+evidence, not a statistical success-rate guarantee, model ranking, dollar-cost
+measurement, or claim of support for every provider. Latencies include local
+loading/thinking and network variance. Automatic context compression, cancellation,
+general checkpoint recovery, and concurrent shared-database runs remain non-goals.
+
 ## v0.9 local verification (2026-09-29)
 
 - Windows / Python 3.11: all 66 automated tests, Ruff lint, and Ruff format

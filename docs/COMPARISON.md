@@ -1,7 +1,7 @@
 # Comparison: small and local agent systems
 
 External-project research date: 2026-08-10; this project's status was updated for
-v0.9. The comparison uses official project documentation and repositories.
+v1.0. The comparison uses official project documentation and repositories.
 “Trade-off” describes scope and responsibility, not a defect.
 
 ## Short conclusion
@@ -111,7 +111,7 @@ instructions or model sampling, and bounded results.
 | v0.6 | Local Web and compatible endpoint adapter | Usable UI and explicit provider choice | Web cannot approve writes |
 | v0.8 | Audited Python read-tool declarations | Small host-owned extension point | Trusted code is not sandboxed |
 | v0.9 | Message-byte guard and task-family artifact checks | Bounded context and stronger regression evidence | No automatic compression or model self-grading |
-| v1.0 gate | API/data compatibility, clean install, real-model regression | Stable distribution evidence | No default orchestration expansion |
+| v1.0 | Stable API/data contracts, tested upgrades and clean installs, two-provider regression | Stable distribution evidence | No default orchestration expansion |
 
 See the [roadmap](ROADMAP.md) for the release criteria.
 
