@@ -8,6 +8,7 @@ from dataclasses import replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
+from threading import Lock
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -68,6 +69,7 @@ class WebApp:
         )
         self.runtime_factory = runtime_factory or self._make_runtime
         self.store = AuditStore(settings.database)
+        self._run_lock = Lock()
 
     def _make_runtime(self, settings: Settings) -> AgentRuntime:
         return AgentRuntime(settings, read_tools=self.read_tools)
@@ -171,6 +173,16 @@ class WebApp:
                 "session_id 长度必须在 1 到 120 之间",
             )
 
+        if not self._run_lock.acquire(blocking=False):
+            raise ApiError(HTTPStatus.CONFLICT, "已有任务正在运行，请完成后再提交")
+        try:
+            return self._run_task(prompt.strip(), session_id, mode)
+        finally:
+            self._run_lock.release()
+
+    def _run_task(
+        self, prompt: str, session_id: str | None, mode: str
+    ) -> dict[str, Any]:
         settings = replace(
             self.settings,
             write_policy="deny" if mode == "read" else "preview",
@@ -180,7 +192,7 @@ class WebApp:
         events: list[dict[str, Any]] = []
         try:
             outcome = runtime.run(
-                prompt.strip(),
+                prompt,
                 session_id=run_session_id,
                 confirm=lambda _action, _detail: False,
                 event_handler=lambda event: events.append(event.to_dict()),

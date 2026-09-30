@@ -2,7 +2,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -122,9 +122,57 @@ def test_web_error_keeps_failed_session_accessible(tmp_path: Path) -> None:
             f"{base_url}/api/sessions/{error['session_id']}", timeout=5
         ) as response:
             session = json.load(response)
+        with pytest.raises(HTTPError) as again:
+            _json_request(f"{base_url}/api/run", {"prompt": "retry"})
 
     assert failed.value.code == 500
+    assert again.value.code == 500
     assert session["runs"][0]["error"] == "model unavailable"
+
+
+def test_web_rejects_overlapping_tasks_without_creating_a_session(
+    tmp_path: Path,
+) -> None:
+    started = Event()
+    release = Event()
+    results: list[dict[str, object]] = []
+
+    class BlockingRuntime(AgentRuntime):
+        def __init__(self, settings: Settings) -> None:
+            super().__init__(settings, model_factory=_TestModelFactory())
+
+        def run(self, *args: Any, **kwargs: Any) -> Any:
+            started.set()
+            if not release.wait(timeout=5):
+                raise TimeoutError("test did not release the first task")
+            return super().run(*args, **kwargs)
+
+    with _live_server(tmp_path, runtime_factory=BlockingRuntime) as base_url:
+        first = Thread(
+            target=lambda: results.append(
+                _json_request(f"{base_url}/api/run", {"prompt": "first"})
+            )
+        )
+        first.start()
+        try:
+            assert started.wait(timeout=3)
+            with pytest.raises(HTTPError) as busy:
+                _json_request(f"{base_url}/api/run", {"prompt": "overlap"})
+            assert busy.value.code == 409
+        finally:
+            release.set()
+            first.join(timeout=5)
+        assert not first.is_alive()
+        assert results[0]["response"] == "done"
+        assert (
+            _json_request(f"{base_url}/api/run", {"prompt": "next"})["response"]
+            == "done"
+        )
+        with urlopen(f"{base_url}/api/sessions", timeout=5) as response:
+            sessions = json.load(response)["sessions"]
+
+    assert len(sessions) == 2
+    assert all(session["last_prompt"] != "overlap" for session in sessions)
 
 
 def test_web_rejects_unsafe_mode_and_cross_origin_post(tmp_path: Path) -> None:
