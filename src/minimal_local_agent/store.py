@@ -241,23 +241,30 @@ class AuditStore:
         tool_name: str,
         status: str,
         details: dict[str, Any],
+        *,
+        _connection: sqlite3.Connection | None = None,
     ) -> None:
-        self.ensure_session(session_id)
-        with self._connection() as connection:
-            connection.execute(
-                """
+        if _connection is None:
+            self.ensure_session(session_id)
+            with self._connection() as connection:
+                self.record_tool_event(
+                    session_id, tool_name, status, details, _connection=connection
+                )
+            return
+        _connection.execute(
+            """
                 INSERT INTO tool_events(
                     session_id, created_at, tool_name, status, details_json
                 ) VALUES (?, ?, ?, ?, ?)
                 """,
-                (
-                    session_id,
-                    _now(),
-                    tool_name,
-                    status,
-                    json.dumps(details, default=str, ensure_ascii=False),
-                ),
-            )
+            (
+                session_id,
+                _now(),
+                tool_name,
+                status,
+                json.dumps(details, default=str, ensure_ascii=False),
+            ),
+        )
 
     def record_receipt(
         self,
@@ -518,3 +525,26 @@ class AuditStore:
             )
             if cursor.rowcount != 1:
                 raise ValueError("Change set is missing or is not currently applied")
+
+    def finalize_undo(
+        self, change_set_id: str, session_id: str, paths: list[str]
+    ) -> None:
+        """Commit the undo state and its audit event in one database transaction."""
+
+        with self._connection() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE change_sets SET status = 'undone', undone_at = ?
+                WHERE id = ? AND session_id = ? AND status = 'applied'
+                """,
+                (_now(), change_set_id, session_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Change set is missing or is not currently applied")
+            self.record_tool_event(
+                session_id,
+                "undo_change_set",
+                "ok",
+                {"change_set_id": change_set_id, "paths": paths},
+                _connection=connection,
+            )

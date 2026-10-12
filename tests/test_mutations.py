@@ -107,3 +107,33 @@ def test_rejects_no_op_mutations(tmp_path: Path) -> None:
                 )
             ]
         )
+
+
+def test_undo_audit_failure_restores_file_and_database_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine, store, workspace, session_id = _engine(tmp_path)
+    workspace.write_file("a.txt", "甲 one\r\n")
+    workspace.write_file("b.txt", "乙 one\n")
+    transaction = engine.prepare_edits(
+        [
+            EditRequest(path=name, old_text="one", new_text="two")
+            for name in ("a.txt", "b.txt")
+        ]
+    )
+    change = engine.commit(transaction, session_id=session_id, kind="edit_files")
+    original = store.record_tool_event
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise OSError("injected undo audit failure")
+
+    monkeypatch.setattr(store, "record_tool_event", fail)
+    with pytest.raises(OSError, match="audit failure"):
+        engine.undo(engine.prepare_undo(change))
+    assert workspace.read_file("a.txt") == "甲 two\r\n"
+    assert workspace.read_file("b.txt") == "乙 two\n"
+    assert store.get_change_set(change)["status"] == "applied"
+    monkeypatch.setattr(store, "record_tool_event", original)
+    engine.undo(engine.prepare_undo(change))
+    assert store.get_change_set(change)["status"] == "undone"
+    assert workspace.read_file("a.txt") == "甲 one\r\n"

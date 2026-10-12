@@ -32,6 +32,7 @@ dev = [
 ]
 mcp = [
   "pydantic-ai-slim[mcp]>=1.107.1,<2.0.0",
+  "mcp<2.0.0",
 ]
 
 [project.scripts]

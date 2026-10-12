@@ -78,6 +78,21 @@ def test_web_console_serves_packaged_frontend(tmp_path: Path) -> None:
     assert 'request("/api/run"' in javascript
 
 
+def test_web_rejects_origin_with_credentials(tmp_path: Path) -> None:
+    with _live_server(tmp_path) as base_url:
+        request = Request(
+            f"{base_url}/api/run",
+            data=b'{"prompt":"valid"}',
+            headers={
+                "Content-Type": "application/json",
+                "Origin": base_url.replace("http://", "http://user:pass@"),
+            },
+        )
+        with pytest.raises(HTTPError) as refused:
+            urlopen(request, timeout=5)
+        assert refused.value.code == 403
+
+
 def test_web_run_is_forced_to_safe_modes_and_saved(tmp_path: Path) -> None:
     with _live_server(tmp_path) as base_url:
         result = _json_request(

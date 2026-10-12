@@ -1,6 +1,7 @@
 import asyncio
 import socket
 from contextlib import suppress
+from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,13 @@ from pydantic_ai.models.test import TestModel
 from minimal_local_agent.config import MCPServerSettings, Settings
 from minimal_local_agent.runtime import AgentRuntime
 
-pytest.importorskip("fastmcp.client")
-FastMCP = pytest.importorskip("mcp.server.fastmcp").FastMCP
+if find_spec("mcp") is None or find_spec("fastmcp") is None:
+    pytest.skip("Optional MCP dependencies are not installed", allow_module_level=True)
+
+# An installed but incompatible optional dependency must fail, not silently skip.
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+from pydantic_ai.mcp import MCPToolset  # noqa: E402, F401
+
 pytestmark = pytest.mark.filterwarnings(
     "ignore::pydantic_settings.exceptions.IncompleteFieldDefinitionWarning"
 )

@@ -322,15 +322,10 @@ class MutationEngine:
             for change in reversed(plan.changes):
                 self.workspace.restore_file(change.path, change.restore)
                 restored.append(change)
-            self.store.mark_change_set_undone(plan.change_set_id)
-            self.store.record_tool_event(
+            self.store.finalize_undo(
+                plan.change_set_id,
                 plan.session_id,
-                "undo_change_set",
-                "ok",
-                {
-                    "change_set_id": plan.change_set_id,
-                    "paths": [change.path for change in plan.changes],
-                },
+                [change.path for change in plan.changes],
             )
         except Exception:
             for change in reversed(restored):

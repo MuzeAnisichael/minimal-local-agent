@@ -305,6 +305,8 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             parsed.scheme == "http"
             and parsed.hostname == host.hostname
             and parsed.port == host.port
+            and parsed.username is None
+            and parsed.password is None
             and not parsed.path
             and not parsed.query
             and not parsed.fragment
