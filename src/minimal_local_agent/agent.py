@@ -431,7 +431,13 @@ class AgentRuntime:
             context_checks=context_checks,
             saved_history_length=len(history),
             full_run_messages=[],
-            saved_history=tuple(history),
+            # Reducers receive mutable SDK objects. Archive an independent copy,
+            # so a host's in-place view edits cannot rewrite past conversation.
+            saved_history=(
+                tuple(ModelMessagesTypeAdapter.validate_json(history_json))
+                if history_json is not None
+                else ()
+            ),
             budget=ExecutionBudget(
                 self.settings.request_limit,
                 self.settings.tool_calls_limit,
@@ -502,7 +508,7 @@ class AgentRuntime:
             usage = dependencies.budget.summary(_usage_dict(result.usage))
             _capture_run_messages(dependencies, result.all_messages())
             serialized = ModelMessagesTypeAdapter.dump_json(
-                [*history, *dependencies.full_run_messages]
+                [*dependencies.saved_history, *dependencies.full_run_messages]
             ).decode("utf-8")
             self.store.save_history(session_id, serialized)
         except Exception as exc:

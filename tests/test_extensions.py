@@ -9,9 +9,11 @@ import pytest
 from pydantic_ai.messages import (
     ModelMessage,
     ModelMessagesTypeAdapter,
+    ModelRequest,
     ModelResponse,
     TextPart,
     ToolCallPart,
+    UserPromptPart,
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.usage import RequestUsage
@@ -578,3 +580,33 @@ def test_final_model_response_over_shared_budget_records_failure(tmp_path):
     with pytest.raises(ValueError, match="Shared output token budget"):
         runtime.run("Plan then answer")
     _failed_receipt(runtime)
+
+
+def test_mutating_host_reducer_cannot_rewrite_archived_history(tmp_path):
+    original = "HISTORY_ORIGINAL " * 180
+
+    def mutating_reducer(messages, _max_bytes):
+        messages[0].parts[0].content = "REDUCER_MUTATED_OLD"
+        return [messages[-1]]
+
+    runtime = AgentRuntime(
+        _settings(tmp_path, max_context_bytes=1500),
+        model_factory=_Factory(),
+        context_reducer=mutating_reducer,
+    )
+    session = runtime.store.new_session()
+    runtime.store.save_history(
+        session,
+        ModelMessagesTypeAdapter.dump_json(
+            [
+                ModelRequest([UserPromptPart(original)]),
+                ModelResponse([TextPart("historic")]),
+            ]
+        ).decode(),
+    )
+    runtime.run("current task", session_id=session)
+    archived = ModelMessagesTypeAdapter.validate_json(
+        runtime.store.load_history(session)
+    )
+    assert archived[0].parts[0].content == original
+    assert "REDUCER_MUTATED_OLD" not in runtime.store.load_history(session)
