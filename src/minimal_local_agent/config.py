@@ -34,6 +34,8 @@ _TOML_FIELDS = {
         "write_policy": str,
     },
     "paths": {"workspace": str, "database": str},
+    "memory": {"enabled": bool, "database": str, "scope": str},
+    "planner": {"enabled": bool},
     "tools": {
         "max_file_bytes": int,
         "max_list_results": int,
@@ -53,7 +55,9 @@ def _validate_fields(table: dict[str, Any], name: str, fields: dict[str, Any]) -
     if unknown:
         raise ValueError(f"Unknown {name} field(s): {', '.join(unknown)}")
     for key, value in table.items():
-        if isinstance(value, bool) or not isinstance(value, fields[key]):
+        if (isinstance(value, bool) and fields[key] is not bool) or not isinstance(
+            value, fields[key]
+        ):
             raise ValueError(f"Invalid type for {name}.{key}")
 
 
@@ -150,8 +154,26 @@ class Settings:
     max_mcp_result_chars: int = 100_000
     tool_policies: tuple[tuple[str, str], ...] = ()
     mcp_servers: tuple[MCPServerSettings, ...] = ()
+    memory_enabled: bool = False
+    memory_database: Path | None = None
+    memory_scope: str | None = None
+    planning_enabled: bool = False
 
     def __post_init__(self) -> None:
+        for name in ("memory_enabled", "planning_enabled"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
+        if self.memory_scope is not None and (
+            not isinstance(self.memory_scope, str)
+            or not self.memory_scope.strip()
+            or len(self.memory_scope) > 240
+            or "\x00" in self.memory_scope
+        ):
+            raise ValueError("memory_scope must contain 1 to 240 characters")
+        if self.memory_database is not None and not isinstance(
+            self.memory_database, Path
+        ):
+            raise ValueError("memory_database must be a Path")
         if not isinstance(self.model, str) or not self.model.strip():
             raise ValueError("model cannot be empty")
         if not isinstance(self.base_url, str):
@@ -243,6 +265,8 @@ class Settings:
         tools = raw.get("tools", {})
         policy = raw.get("policy", {})
         mcp = raw.get("mcp", {})
+        memory = raw.get("memory", {})
+        planner = raw.get("planner", {})
         policy_tools = policy.get("tools", {})
         if not all(isinstance(decision, str) for decision in policy_tools.values()):
             raise ValueError("policy.tools must map tool names to string decisions")
@@ -361,6 +385,12 @@ class Settings:
             ),
             tool_policies=tuple(sorted(tool_policies.items())),
             mcp_servers=tuple(mcp_servers),
+            memory_enabled=memory.get("enabled", False),
+            memory_database=(
+                _path(memory["database"], base_dir) if "database" in memory else None
+            ),
+            memory_scope=memory.get("scope"),
+            planning_enabled=planner.get("enabled", False),
         )
 
 

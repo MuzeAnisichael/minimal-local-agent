@@ -10,7 +10,7 @@ from typing import Literal
 from minimal_local_agent.config import Settings
 
 Decision = Literal["allow", "ask", "deny", "preview"]
-Effect = Literal["read", "write", "external-read"]
+Effect = Literal["read", "write", "external-read", "memory-candidate", "delegate"]
 
 BUILTIN_EFFECTS: dict[str, Effect] = {
     "list_files": "read",
@@ -18,6 +18,12 @@ BUILTIN_EFFECTS: dict[str, Effect] = {
     "search_text": "read",
     "write_file": "write",
     "edit_files": "write",
+}
+
+EXTENSION_EFFECTS: dict[str, Effect] = {
+    "memory_search": "read",
+    "memory_propose": "memory-candidate",
+    "delegate_task": "delegate",
 }
 
 
@@ -45,7 +51,7 @@ class PolicyEngine:
         explicit = self.overrides.get(name)
         if explicit is not None:
             return explicit  # Settings validates values.
-        if effect in {"read", "external-read"}:
+        if effect in {"read", "external-read", "memory-candidate", "delegate"}:
             return "allow"
         return "ask"
 
@@ -57,6 +63,7 @@ class PolicyEngine:
         external_tools: tuple[str, ...] = (),
         *,
         python_tools: tuple[str, ...] = (),
+        extension_tools: tuple[str, ...] = (),
     ) -> tuple[Capability, ...]:
         values = [
             Capability(
@@ -85,6 +92,15 @@ class PolicyEngine:
             )
             for name in python_tools
         )
+        values.extend(
+            Capability(
+                name=name,
+                effect=EXTENSION_EFFECTS[name],
+                decision=self.decision(name, EXTENSION_EFFECTS[name]),
+                source="peer" if name == "delegate_task" else "memory",
+            )
+            for name in extension_tools
+        )
         return tuple(values)
 
     def manifest(
@@ -92,11 +108,14 @@ class PolicyEngine:
         external_tools: tuple[str, ...] = (),
         *,
         python_tools: tuple[str, ...] = (),
+        extension_tools: tuple[str, ...] = (),
     ) -> list[dict[str, str]]:
         return [
             asdict(capability)
             for capability in self.capabilities(
-                external_tools, python_tools=python_tools
+                external_tools,
+                python_tools=python_tools,
+                extension_tools=extension_tools,
             )
         ]
 
@@ -105,9 +124,14 @@ class PolicyEngine:
         external_tools: tuple[str, ...] = (),
         *,
         python_tools: tuple[str, ...] = (),
+        extension_tools: tuple[str, ...] = (),
     ) -> str:
         encoded = json.dumps(
-            self.manifest(external_tools, python_tools=python_tools),
+            self.manifest(
+                external_tools,
+                python_tools=python_tools,
+                extension_tools=extension_tools,
+            ),
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
@@ -116,6 +140,7 @@ class PolicyEngine:
 
 __all__ = [
     "BUILTIN_EFFECTS",
+    "EXTENSION_EFFECTS",
     "Capability",
     "Decision",
     "Effect",

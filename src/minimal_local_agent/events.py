@@ -30,9 +30,12 @@ class EventBus:
         self,
         session_id: str,
         handler: EventHandler | None = None,
+        *,
+        execution_id: str | None = None,
     ) -> None:
         self.session_id = session_id
         self.handler = handler
+        self.execution_id = execution_id
         self._sequence = 0
         self._handler_errors: list[str] = []
 
@@ -47,7 +50,14 @@ class EventBus:
             created_at=datetime.now(UTC).isoformat(timespec="milliseconds"),
             session_id=self.session_id,
             type=event_type,
-            data=data or {},
+            data={
+                **(data or {}),
+                **(
+                    {"execution_id": self.execution_id}
+                    if self.execution_id is not None
+                    else {}
+                ),
+            },
         )
         if self.handler is not None:
             try:
