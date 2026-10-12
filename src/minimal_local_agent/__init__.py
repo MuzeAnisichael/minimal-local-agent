@@ -11,6 +11,7 @@ from minimal_local_agent.memory import (
     SQLiteMemoryStore,
 )
 from minimal_local_agent.models import ModelFactory
+from minimal_local_agent.observation import ObservationHub
 from minimal_local_agent.peers import LocalPeer, Peer, PeerResult
 from minimal_local_agent.planning import ModelPlanner, Plan, Planner, PlanStep
 from minimal_local_agent.read_tools import ReadTool
@@ -21,7 +22,7 @@ from minimal_local_agent.runtime import (
     RuntimeEvent,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "A2APeer",
@@ -33,6 +34,7 @@ __all__ = [
     "EventHandler",
     "MCPServerSettings",
     "ModelFactory",
+    "ObservationHub",
     "MemoryConflictError",
     "MemoryRecord",
     "MemoryStore",

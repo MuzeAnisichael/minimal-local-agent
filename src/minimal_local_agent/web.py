@@ -5,16 +5,23 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import replace
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
-from threading import Lock
+from threading import BoundedSemaphore, Event, Lock
+from time import monotonic
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
+from uuid import uuid4
 
 from minimal_local_agent import __version__
 from minimal_local_agent.config import Settings
+from minimal_local_agent.events import RuntimeEvent
+from minimal_local_agent.extension_context import memory_scope
+from minimal_local_agent.memory import SQLiteMemoryStore
 from minimal_local_agent.models import probe_model
+from minimal_local_agent.observation import ObservationHub
 from minimal_local_agent.policy import PolicyEngine
 from minimal_local_agent.read_tools import ReadTool, build_read_toolset
 from minimal_local_agent.runtime import AgentRuntime
@@ -28,6 +35,9 @@ _ASSETS = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/assets/app.css": ("app.css", "text/css; charset=utf-8"),
     "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/inspector": ("inspector.html", "text/html; charset=utf-8"),
+    "/assets/inspector.css": ("inspector.css", "text/css; charset=utf-8"),
+    "/assets/inspector.js": ("inspector.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -70,9 +80,56 @@ class WebApp:
         self.runtime_factory = runtime_factory or self._make_runtime
         self.store = AuditStore(settings.database)
         self._run_lock = Lock()
+        self.observation = ObservationHub()
+        self.inspector_closed = Event()
+        self.inspector_clients = BoundedSemaphore(8)
+        self.memory_scope = memory_scope(settings)
+        self.memory_store = (
+            SQLiteMemoryStore(
+                settings.memory_database or settings.database.with_name("memory.db")
+            )
+            if settings.memory_enabled
+            else None
+        )
 
     def _make_runtime(self, settings: Settings) -> AgentRuntime:
-        return AgentRuntime(settings, read_tools=self.read_tools)
+        return AgentRuntime(
+            settings, read_tools=self.read_tools, memory_store=self.memory_store
+        )
+
+    def memory_snapshot(self) -> dict[str, Any]:
+        if self.memory_store is None:
+            return {"enabled": False, "scope": None, "records": []}
+        try:
+            records: list[dict[str, Any]] = []
+            size = 0
+            source = self.memory_store.list_records(self.memory_scope, limit=50)
+            for record in source:
+                payload = record.to_dict()
+                length = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+                if size + length > 64_000:
+                    break
+                records.append(payload)
+                size += length
+            truncated = len(records) < len(source)
+            return {
+                "enabled": True,
+                "scope": self.memory_scope,
+                "records": records,
+                "truncated": truncated,
+                "notice": "观察列表有界；CLI 可查看完整记录。" if truncated else "",
+            }
+        except Exception as exc:
+            return {
+                "enabled": True,
+                "scope": self.memory_scope,
+                "error": type(exc).__name__,
+            }
+
+    def inspector_snapshot(self) -> dict[str, Any]:
+        snapshot = self.observation.snapshot()
+        snapshot["memory"] = self.memory_snapshot()
+        return snapshot
 
     @property
     def external_tools(self) -> tuple[str, ...]:
@@ -88,6 +145,9 @@ class WebApp:
     def status(self) -> dict[str, Any]:
         read_settings = replace(self.settings, write_policy="deny")
         preview_settings = replace(self.settings, write_policy="preview")
+        extensions = (
+            ("memory_search", "memory_propose") if self.settings.memory_enabled else ()
+        )
         return {
             "name": "Minimal Local Agent",
             "version": __version__,
@@ -99,13 +159,17 @@ class WebApp:
                 "read": {
                     "label": "只读",
                     "capabilities": PolicyEngine(read_settings).manifest(
-                        self.external_tools, python_tools=self.python_tools
+                        self.external_tools,
+                        python_tools=self.python_tools,
+                        extension_tools=extensions,
                     ),
                 },
                 "preview": {
                     "label": "变更预览",
                     "capabilities": PolicyEngine(preview_settings).manifest(
-                        self.external_tools, python_tools=self.python_tools
+                        self.external_tools,
+                        python_tools=self.python_tools,
+                        extension_tools=extensions,
                     ),
                 },
             },
@@ -190,14 +254,48 @@ class WebApp:
         runtime = self.runtime_factory(settings)
         run_session_id = session_id or runtime.store.new_session()
         events: list[dict[str, Any]] = []
+        execution_id = f"exec-{uuid4().hex}"
+        legacy_types = {
+            "run.started",
+            "run.completed",
+            "run.failed",
+            "tool.completed",
+            "mutation.preview",
+            "mutation.applied",
+            "context.rejected",
+            "context.reduced",
+        }
+
+        def observe(event: RuntimeEvent) -> None:
+            self.observation.publish(event)
+            # Keep the original response small; raw observations use the bounded,
+            # redacted inspector stream rather than the ordinary chat API.
+            if event.type in legacy_types:
+                events.append(event.to_dict())
+
         try:
             outcome = runtime.run(
                 prompt,
                 session_id=run_session_id,
                 confirm=lambda _action, _detail: False,
-                event_handler=lambda event: events.append(event.to_dict()),
+                event_handler=observe,
+                execution_id=execution_id,
+                observe=True,
             )
         except Exception as exc:
+            if not any(event["type"] == "run.failed" for event in events):
+                self.observation.publish(
+                    RuntimeEvent(
+                        sequence=0,
+                        created_at=datetime.now(UTC).isoformat(),
+                        session_id=run_session_id,
+                        type="run.failed",
+                        data={
+                            "execution_id": execution_id,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                )
             raise AgentRunError(run_session_id, str(exc)) from exc
         chain_verified, _ = runtime.store.verify_receipt_chain(outcome.session_id)
         return {
@@ -209,6 +307,7 @@ class WebApp:
             "events": events,
             "event_handler_errors": list(outcome.event_handler_errors),
             "mode": mode,
+            "execution_id": execution_id,
         }
 
 
@@ -221,6 +320,10 @@ class WebServer(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], app: WebApp) -> None:
         self.app = app
         super().__init__(address, WebRequestHandler)
+
+    def server_close(self) -> None:
+        self.app.inspector_closed.set()
+        super().server_close()
 
 
 class WebRequestHandler(BaseHTTPRequestHandler):
@@ -348,6 +451,64 @@ class WebRequestHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:  # noqa: N802
         self.do_GET()
 
+    def _inspector_stream(self, query: dict[str, list[str]]) -> None:
+        try:
+            cursor = int(
+                self.headers.get("Last-Event-ID") or query.get("cursor", ["0"])[0]
+            )
+            if cursor < 0 or cursor > 2**63 - 1:
+                raise ValueError
+        except ValueError as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "观察游标无效") from exc
+        if self.command == "HEAD":
+            self._send_bytes(HTTPStatus.OK, b"", "text/event-stream; charset=utf-8")
+            return
+        app = self.server.app
+        if not app.inspector_clients.acquire(blocking=False):
+            raise ApiError(HTTPStatus.SERVICE_UNAVAILABLE, "观察连接数量已达上限")
+        try:
+            self.send_response(HTTPStatus.OK)
+            self._security_headers()
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.flush()
+            self.connection.settimeout(20)
+            last_sent = 0.0
+            last_memory_check = 0.0
+            memory_signature = ""
+            while not app.inspector_closed.is_set():
+                payload = app.observation.read_after(cursor, timeout=1.0)
+                now = monotonic()
+                memory_due = now - last_memory_check >= 15
+                if (
+                    not payload["events"]
+                    and not payload["gap"]
+                    and now - last_sent < 15
+                    and not memory_due
+                ):
+                    continue
+                if memory_due or any(
+                    event["type"].startswith("memory.") for event in payload["events"]
+                ):
+                    memory = app.memory_snapshot()
+                    last_memory_check = now
+                    signature = json.dumps(memory, ensure_ascii=False, sort_keys=True)
+                    if signature != memory_signature:
+                        payload["memory"] = memory
+                        memory_signature = signature
+                cursor = payload["cursor"]
+                message = json.dumps(payload, ensure_ascii=False, allow_nan=False)
+                self.wfile.write(f"id: {cursor}\ndata: {message}\n\n".encode())
+                self.wfile.flush()
+                last_sent = now
+        except (OSError, TimeoutError):
+            return
+        finally:
+            self.close_connection = True
+            app.inspector_clients.release()
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path
@@ -359,6 +520,18 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             if path == "/favicon.ico":
                 self._send_bytes(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
                 return
+            if path.startswith("/api/inspector/"):
+                if (
+                    not self._origin_allowed()
+                    or self.headers.get("Sec-Fetch-Site") == "cross-site"
+                ):
+                    raise ApiError(HTTPStatus.FORBIDDEN, "观察接口只允许同源访问")
+                if path == "/api/inspector/snapshot":
+                    self._send_json(HTTPStatus.OK, self.server.app.inspector_snapshot())
+                    return
+                if path == "/api/inspector/events":
+                    self._inspector_stream(parse_qs(parsed.query))
+                    return
             if path == "/api/status":
                 self._send_json(HTTPStatus.OK, self.server.app.status())
                 return

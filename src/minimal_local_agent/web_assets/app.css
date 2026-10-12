@@ -47,6 +47,21 @@ button {
   color: inherit;
 }
 
+.inspector-link {
+  color: var(--forest);
+  font-size: 13px;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: nowrap;
+}
+
+.inspector-link:focus-visible {
+  outline: 3px solid var(--forest-light);
+  outline-offset: 2px;
+}
+
 button:focus-visible,
 textarea:focus-visible,
 input:focus-visible + span {
@@ -706,6 +721,7 @@ input:focus-visible + span {
 }
 
 .inspector-section {
+  min-width: 0;
   padding: 20px;
   border-bottom: 1px solid var(--line);
 }
@@ -1047,7 +1063,7 @@ input:focus-visible + span {
 
   .inspector {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .activity-section,
@@ -1072,6 +1088,18 @@ input:focus-visible + span {
 
   .topbar {
     min-height: 91px;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-block: 15px;
+  }
+
+  .topbar > div:first-child {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .topbar .connection {
+    margin-left: auto;
   }
 
   .connection {
@@ -1114,7 +1142,7 @@ input:focus-visible + span {
   }
 
   .inspector {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .activity-section,

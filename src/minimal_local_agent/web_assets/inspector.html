@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Minimal Local Agent 的本机只读运行观察面板。" />
+    <title>运行观察 · Minimal Local Agent</title>
+    <link rel="stylesheet" href="/assets/inspector.css" />
+    <script src="/assets/inspector.js" defer></script>
+  </head>
+  <body>
+    <main class="inspector-shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">MINIMAL LOCAL AGENT · READ ONLY</p>
+          <h1>运行观察</h1>
+        </div>
+        <a class="workbench-link" href="/">返回工作台</a>
+      </header>
+
+      <section class="status-strip" aria-label="观察连接状态">
+        <div class="connection-block" role="status" aria-live="polite">
+          <strong id="connection-state" data-state="loading">正在连接</strong>
+          <span id="connection-detail">只读观察，不影响任务执行。</span>
+        </div>
+        <dl class="status-values">
+          <div><dt id="running-label">运行中</dt><dd id="running-count">—</dd></div>
+          <div><dt>保留事件</dt><dd id="event-count">—</dd></div>
+          <div><dt>最新事件</dt><dd id="last-updated">尚无事件</dd></div>
+        </dl>
+      </section>
+
+      <p class="notice" id="gap-notice" hidden role="status"></p>
+      <nav class="view-tabs" role="tablist" aria-label="观察视图">
+        <button id="tab-runs" role="tab" aria-controls="panel-runs" aria-selected="true" data-tab="runs">运行</button>
+        <button id="tab-messages" role="tab" aria-controls="panel-messages" aria-selected="false" tabindex="-1" data-tab="messages">消息</button>
+        <button id="tab-context" role="tab" aria-controls="panel-context" aria-selected="false" tabindex="-1" data-tab="context">上下文</button>
+        <button id="tab-memory" role="tab" aria-controls="panel-memory" aria-selected="false" tabindex="-1" data-tab="memory">记忆</button>
+      </nav>
+
+      <div class="filter-bar">
+        <label for="run-select">观察范围</label>
+        <select id="run-select"><option value="">全部近期运行</option></select>
+        <span id="window-summary">正在读取观察窗口…</span>
+      </div>
+
+      <section id="panel-runs" class="view-panel" role="tabpanel" aria-labelledby="tab-runs" tabindex="0">
+        <h2>运行与子任务</h2>
+        <p class="panel-note">运行状态来自明确事件。计划和远端任务与所属运行关联展示。</p>
+        <div id="runs-content" class="card-list"><p class="empty">正在载入…</p></div>
+      </section>
+      <section id="panel-messages" class="view-panel" role="tabpanel" aria-labelledby="tab-messages" tabindex="0" hidden>
+        <h2>会话 Message</h2>
+        <p class="panel-note">运行中观察到的用户、模型和工具消息，不是模型提交视图；不展示隐藏思维链。</p>
+        <div id="messages-content" class="card-list"></div>
+      </section>
+      <section id="panel-context" class="view-panel" role="tabpanel" aria-labelledby="tab-context" tabindex="0" hidden>
+        <h2>模型提交前视图</h2>
+        <p class="panel-note">显示 SDK 接收的 Message 视图与字节预算，不代表完整 HTTP 请求或模型内部窗口。字节不是 tokens。</p>
+        <div id="context-content" class="card-list"></div>
+      </section>
+      <section id="panel-memory" class="view-panel" role="tabpanel" aria-labelledby="tab-memory" tabindex="0" hidden>
+        <div class="memory-heading">
+          <h2>长期与实体记忆</h2>
+          <button id="memory-refresh" type="button">刷新记忆列表</button>
+        </div>
+        <p class="panel-note">区分检索、待批准候选与已提交条目。此面板不能批准、编辑或删除记忆。</p>
+        <div id="memory-content" class="card-list"></div>
+      </section>
+
+      <footer class="retention-note">
+        <p id="retention-note">原始消息及提交前视图仅保留在有界内存观察窗口；重启或淘汰后不可在此恢复。</p>
+        <p>观察事件不是归档。持久化记忆列表另从当前作用域的数据库读取；已保存的会话和审计回执仍在工作台查看。</p>
+      </footer>
+    </main>
+  </body>
+</html>
