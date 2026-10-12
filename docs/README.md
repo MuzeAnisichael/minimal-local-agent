@@ -10,6 +10,9 @@ guide that answers your question. No separate documentation service is required.
 | Run CLI tasks or use the local Web console | [User guide](GUIDE.md#cli-and-web) |
 | Configure a local model or compatible API | [Configuration](GUIDE.md#configuration) |
 | Add a Python read tool, model factory, or reducer | [Embedding and extensions](GUIDE.md#embedding-and-extensions), [runnable example](../examples/read_tool.py) |
+| Enable scoped/entity memory, an advisory planner, or explicit peers | [Optional modules (中文)](MODULES.md) |
+| Inspect live messages, submitted context, memory, and task state | [Read-only inspector (中文)](MODULES.md#只读实时观察) |
+| Try the optional A2A interface without model calls | [A2A guide (中文)](MODULES.md#a2a-接入), [offline demo](../examples/a2a_demo.py) |
 | Try the interface without touching personal files | [Disposable Web demo](../examples/web_demo.py), [screenshot provenance](assets/README.md) |
 | Understand the implementation and trust boundary | [Architecture](ARCHITECTURE.md), [security policy](../SECURITY.md) |
 | Upgrade an existing installation or build an integration | [v1 compatibility and migration contract](COMPATIBILITY.md) |
@@ -24,5 +27,7 @@ and a compatible API. These are regression smoke checks, not a model ranking or 
 statistical reliability guarantee. Details, limits, and unknown usage are recorded
 in [VALIDATION.md](VALIDATION.md).
 
-Version 1.x keeps the documented extension and data contracts. The roadmap is now
-maintenance-focused; automatic compression and broad orchestration are not promises.
+Version 1.x keeps the documented kernel contracts. v1.1.0 is local, unreleased
+work on opt-in module interfaces and observation; the v1.0 validation record does
+not validate those new paths. Automatic compression and broad orchestration are
+not promises. See the [current roadmap](ROADMAP.md).

@@ -1,5 +1,42 @@
 # Validation records
 
+## v1.1 local modular-extension verification (2026-10-12, unreleased)
+
+These checks verify implementation contracts, not real-model task success or
+monetary cost. Models were deterministic TestModel/FunctionModel or mocked HTTP;
+real HTTP below means loopback protocol interoperability. No paid generation or
+model download was used. Local results do not claim a new GitHub CI run or release.
+
+| Environment/check | Result |
+|---|---|
+| Windows / Python 3.11.7 / PydanticAI 1.107.1 / A2A SDK 1.2.2 | 339 passed, 0 failed, 1 conditional skip (Linux case-sensitive workspace names) |
+| Ubuntu WSL2 / Python 3.11.17 / PydanticAI 1.107.1 / MCP 1.30.0 | 292 passed, 0 failed; entire optional A2A module skipped because its SDK was absent |
+| Ubuntu WSL2 / Python 3.12.15 / PydanticAI 1.107.7 / MCP 1.30.0 | 292 passed, 0 failed; same optional A2A module skip |
+| Isolated Chrome and Edge, Chromium sandbox retained | 16/16 browser checks passed, including 390px layouts |
+| Final wheel and source, separate fresh Windows environments | Both installs passed; PydanticAI 1.107.7 / OpenAI SDK 3.29.0 / Pydantic 2.14.1 |
+| Ruff lint and format | Passed |
+
+Coverage includes scoped candidate/approval/entity revision conflicts, original
+history vs injected/model context, mutable reducer archive isolation, shared
+planner/peer budgets, pending vs completed delegation, unknown/invalid usage,
+official A2A Agent Card/HTTP task interoperability, timeout/cancellation boundaries,
+model-client cleanup/reopening, SSE cursors/gaps, same-origin protection, bounded
+observation, slow readers, and memory read failure without clearing the last snapshot.
+The browser checks observe a blocked task before completion, keyboard/URL restore,
+explicit failure, disconnect/reconnect, epoch changes, text-only rendering, and
+absence of uncaught page errors. Packaging checks exclude private configuration
+and SQLite state and exercise CLI memory approval, embedding, receipts, and all
+inspector assets/API. Linux tested newly extracted source, not fresh wheel installs.
+
+The Linux checks ran from the final validation source archive, SHA-256
+`3b9dceb0685d1d5f73ff2a14c2c59c58128874299e82b8f231673ed6ece6d3e4`.
+Verification notes were added after building that archive; product code is unchanged.
+Raw JUnit, browser traces/screenshots, archives, and the development log stay local.
+macOS and new-module quality/performance with live models were not verified.
+
+The original v1.0 real-model evidence below is historical; it is not a benchmark
+or acceptance claim for new v1.1 memory, planner, and peer behavior.
+
 ## v1.0 release verification (2026-09-30)
 
 ### Automated and installation checks

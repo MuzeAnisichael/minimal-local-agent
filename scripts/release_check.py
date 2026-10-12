@@ -91,6 +91,37 @@ def smoke(installed_root: Path | None = None) -> None:
         )
         assert len(json.loads(result.stdout)["policy_sha256"]) == 64
 
+        # Explicit human memory management must work without a model service.
+        proposed = subprocess.run(
+            [str(console), "memory", "propose", "release preference", "--json"],
+            cwd=root,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        candidate = json.loads(proposed.stdout)["records"][0]
+        assert candidate["status"] == "candidate"
+        approved = subprocess.run(
+            [
+                str(console),
+                "memory",
+                "approve",
+                candidate["id"],
+                "--revision",
+                str(candidate["revision"]),
+                "--json",
+            ],
+            cwd=root,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert json.loads(approved.stdout)["records"][0]["status"] == "approved"
+
         server = create_web_server(
             settings,
             port=0,
@@ -102,7 +133,14 @@ def smoke(installed_root: Path | None = None) -> None:
         thread.start()
         address = f"http://127.0.0.1:{server.server_address[1]}"
         try:
-            for path in ("/", "/assets/app.js", "/assets/app.css"):
+            for path in (
+                "/",
+                "/assets/app.js",
+                "/assets/app.css",
+                "/inspector",
+                "/assets/inspector.js",
+                "/assets/inspector.css",
+            ):
                 with urlopen(address + path, timeout=5) as response:
                     assert response.status == 200 and response.read()
             request = Request(
@@ -113,6 +151,10 @@ def smoke(installed_root: Path | None = None) -> None:
             with urlopen(request, timeout=10) as response:
                 outcome = json.load(response)
             assert outcome["response"] == "done" and outcome["mode"] == "preview"
+            with urlopen(address + "/api/inspector/snapshot", timeout=5) as response:
+                snapshot = json.load(response)
+            assert snapshot["runs"][0]["state"] == "completed"
+            assert snapshot["memory"]["enabled"] is False
             with urlopen(
                 address + "/api/sessions/" + outcome["session_id"], timeout=5
             ) as response:
@@ -138,8 +180,18 @@ def check_archive(distribution: Path) -> None:
     for required in (
         "context.py",
         "evals.py",
+        "memory.py",
+        "memory_cli.py",
+        "planning.py",
+        "peers.py",
+        "a2a_adapter.py",
+        "model_execution.py",
+        "observation.py",
         "web_assets/index.html",
         "web_assets/app.js",
+        "web_assets/inspector.html",
+        "web_assets/inspector.js",
+        "web_assets/inspector.css",
     ):
         qualified = "minimal_local_agent/" + required
         assert any(

@@ -2,6 +2,62 @@
 
 All notable changes to this project are documented here.
 
+## [1.1.0] - Unreleased
+
+### Added
+
+- Explicit optional `MemoryStore`, `Planner`, and `Peer` interfaces without
+  enabling a multi-agent team by default.
+- Scoped SQLite knowledge and structured entity records: candidate proposals,
+  human approval/rejection, revision-checked updates, forgetting, and bounded
+  approved-only retrieval. Entity attributes are not a graph or vector database.
+- Model-free `memory list/show/propose/update/approve/reject/forget` commands,
+  optional `[memory]` / `[planner]` settings, and `--memory` / `--planner` on
+  runtime entry points.
+- A single advisory `ModelPlanner` call charged to the shared run budget;
+  structured steps and completion conditions do not execute a workflow.
+- Explicit read-only `LocalPeer` delegation with separate workspace/database
+  requirements, plus an optional A2A 1.0 HTTP+JSON adapter using the official
+  Python SDK (`>=1.2.2,<1.3.0`) and a default-offline two-terminal example.
+- A read-only `/inspector` with run, message, context, and memory views;
+  SSE updates, globally correlated cursors, bounded event/content retention,
+  stale-but-visible reconnect behavior, and separate persistent-memory snapshots.
+
+### Changed
+
+- Optional planning/delegation reserve shared request, tool, and output budgets.
+  Missing usage stays unknown, and third-party A2A metadata is not a hard cost limit.
+- Original conversation history and SDK model-submitted message views are kept
+  distinct in observation. Message byte guards are not exact model token windows.
+- Public documentation distinguishes the released v1.0 kernel from these local,
+  unreleased extensions; existing v1.0 smoke results do not validate new paths.
+
+### Fixed
+
+- Undo file compensation and its SQLite audit/status now finish atomically.
+- Local Web origin checks reject URLs containing credentials.
+- The optional MCP extra constrains incompatible MCP 2.x, and integration tests
+  no longer hide an installed but incompatible client behind an import skip.
+- Unreported/null extension counters stay unknown; provisional peer usage never
+  refunds a nonterminal task, and measured final model output is checked against
+  the shared limit even if a provider ignores the requested maximum.
+- SDK-owned model HTTP clients close on both success and failure and may be
+  reopened for subsequent runs. Non-usage A2A artifacts preserve earlier counters.
+- SSE streams actually close on exit, and mobile grids handle long local paths
+  without widening the page.
+- An in-place edit by a custom context reducer cannot rewrite archived messages.
+
+### Boundaries
+
+- Memory proposals require explicit human approval; the inspector has no memory
+  editing, write-approval, cancellation, or administrative control endpoint.
+- Peers are explicitly configured and loopback-only. A timeout stops waiting,
+  not execution; cancellation and cross-process task recovery are unsupported.
+- Raw observation is bounded in-memory data, not a durable full replay. Durable
+  memory records and the existing history/audit databases have separate roles.
+- The default single-agent loop, five filesystem tools, and private local
+  connection configuration remain unchanged.
+
 ## [1.0.0] - 2026-09-30
 
 ### Added
@@ -185,3 +241,4 @@ and no default context compression. The explicit reducer extension remains.
 [0.8.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.6.0...v0.8.0
 [0.9.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.8.0...v0.9.0
 [1.0.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v0.9.0...v1.0.0
+[1.1.0]: https://github.com/MuzeAnisichael/minimal-local-agent/compare/v1.0.0...main

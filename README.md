@@ -16,6 +16,11 @@ One model/tool loop, one bounded workspace, and a local SQLite record of what
 happened. Use Ollama or an explicitly configured Chat Completions-compatible API
 from the CLI, local Web console, or your own Python host.
 
+The local, unreleased **v1.1.0** adds optional scoped memory, advisory planning,
+explicit peers, and a read-only live inspector. The default is still one agent;
+memory, planning, and delegation are off unless selected. The published fixed
+release documented below remains v1.0.0.
+
 Built for developers who want to understand, embed, and customize an agent—not
 a universal assistant with a growing collection of default tools.
 
@@ -43,7 +48,7 @@ Web tasks can read or preview. Approving an actual write requires interactive CL
 - **Inspectable runs.** Local history, tool audit, runtime events, and hash-chained
   receipts explain what ran and what changed.
 - **Small extension points.** Add a reviewed read tool, replace model construction,
-  or explicitly supply a context reducer without editing the loop.
+  or supply memory, planner, peer, and context-reducer adapters without editing the loop.
 
 See the [scope comparison](docs/COMPARISON.md) for trade-offs. This is neither a
 Python sandbox nor a general autonomous assistant.
@@ -89,6 +94,10 @@ Open `http://127.0.0.1:8765`. Put only files the agent may access under
 `workspace/`. Prefer the terminal? Run `minimal-agent chat` or
 `minimal-agent run --read-only "List the workspace files"`.
 
+In the v1.1.0 source checkout, open `http://127.0.0.1:8765/inspector` for live
+run, message, context, and memory views. It is observation only, not an admin
+control surface. [Optional modules and inspector guide (中文)](docs/MODULES.md).
+
 To try the Web interface with disposable sample files, run this from the source
 checkout instead of `minimal-agent web`:
 
@@ -107,8 +116,8 @@ and install it in a virtual environment:
 python -m pip install minimal_local_agent-1.0.0-py3-none-any.whl
 ```
 
-No PyPI publication is assumed. The `v1.0.0` tag pins the original release;
-the screenshot demo and refreshed documentation live on `main`.
+No PyPI publication is assumed. The `v1.0.0` tag pins the original release and
+does not include the unreleased v1.1.0 modules. The screenshots above depict v1.0.
 More commands and configuration: [user guide](docs/GUIDE.md).
 
 ## What is included
@@ -121,6 +130,9 @@ More commands and configuration: [user guide](docs/GUIDE.md).
 | Interfaces | CLI and loopback Web; Web is read-only or preview-only |
 | Local state | SQLite sessions, history, audit, change snapshots, chained execution receipts |
 | Extensions | Explicit Python read tools, optional allowlisted loopback MCP, model/reducer seams |
+| Optional memory | Scoped SQLite facts/entities; candidates require human approval before retrieval |
+| Optional planning / peers | One budgeted advisory plan; explicitly configured read-only local or A2A peers |
+| Live inspector | Four read-only views; bounded in-memory messages/events, separate persistent-memory snapshot |
 | Evaluation | Isolated fixtures; deterministic answer, tool, and file assertions; task-family reports |
 
 ## Customize without forking the core
@@ -143,6 +155,10 @@ print(outcome.receipt_hash)
   compression is off, and the original history remains stored.
 - **Connect MCP:** optionally install the extra and allowlist reviewed local
   read tools. No implicit discovery or remote MCP.
+- **Select optional modules:** use `--memory` / `--planner` on `run`, `chat`, or
+  `web`, or inject host-owned `memory_store`, `planner`, and `peers`. Approvals
+  stay in the memory CLI; no automatic agent team is started. See the
+  [module contracts and A2A example (中文)](docs/MODULES.md).
 
 Read the [embedding guide](docs/GUIDE.md#embedding-and-extensions) and
 [v1 compatibility contract](docs/COMPATIBILITY.md) before building an integration.
@@ -162,6 +178,8 @@ PydanticAI handles model/tool iteration; project code handles boundaries,
 transactions, and local state. The Web UI uses standard-library HTTP and plain
 HTML/CSS/JavaScript—no frontend build stack. See the
 [architecture and source map](docs/ARCHITECTURE.md).
+Optional modules attach to these host boundaries rather than adding a second
+workflow engine. Their contracts and limits are in [MODULES.md](docs/MODULES.md).
 
 ## Release evidence, not hype
 
@@ -177,6 +195,9 @@ supported dependencies, and optional MCP.
 These ten fixed-budget cases are regression evidence, not a model ranking or a
 statistical reliability guarantee. Missing usage stays unknown; token counts are
 not monetary costs. [Reviewed release results](evals/results/v1.0.json).
+This record describes v1.0, not acceptance evidence for the new optional v1.1.0 paths.
+The unreleased v1.1 implementation has separate [local regression evidence](docs/VALIDATION.md#v11-local-modular-extension-verification-2026-10-12-unreleased),
+with optional-module, browser, Linux source, and fresh Windows installation checks.
 
 ## Boundaries to know
 
@@ -187,8 +208,14 @@ not monetary costs. [Reviewed release results](evals/results/v1.0.json).
   and back it up before a supported upgrade.
 - Python read tools and MCP allowlists are trusted declarations, not sandboxes.
   Receipt rewrite detection needs a final hash kept outside SQLite.
-- No built-in shell, deletion, browser control, semantic memory, scheduling, hidden
-  agents, or general crash-recovery orchestration.
+- Memory candidates are not effective knowledge until a human approves them.
+  Forgetting excludes retrieval; it does not erase history or audit archives.
+- Peer timeouts stop waiting, not execution. A2A is opt-in, loopback-only, and
+  provides no cancellation or task recovery across process restarts.
+- The inspector retains a bounded memory window, not a full persistent replay.
+  Message bytes are not model tokens; missing/all-zero usage is unknown, not free.
+- No built-in shell, deletion, browser control, vector/graph memory, scheduling,
+  hidden agents, or general crash-recovery orchestration.
 
 [Security policy](SECURITY.md) · [Troubleshooting](docs/GUIDE.md#troubleshooting) ·
 [Maintenance roadmap](docs/ROADMAP.md)

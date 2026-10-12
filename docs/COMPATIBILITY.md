@@ -15,8 +15,10 @@ The existing imports from `config`, `runtime`, `models`, and `read_tools` remain
 available. Documented call signatures are preserved throughout 1.x:
 
 ```python
-AgentRuntime(settings, *, model_factory=None, read_tools=(), context_reducer=None)
-runtime.run(prompt, *, session_id=None, confirm=None, event_handler=None)
+AgentRuntime(settings, *, model_factory=None, read_tools=(), context_reducer=None,
+             memory_store=None, planner=None, peers=None)
+runtime.run(prompt, *, session_id=None, confirm=None, event_handler=None,
+            execution_id=None, observe=False)
 ReadTool(name, function, description=None)
 Settings.load(config_path=None)
 ```
@@ -121,3 +123,37 @@ extra, and fresh wheel/source installs on Linux and Windows. The package smoke
 check covers the console entry point, embedding API, an audited Python tool,
 session history, receipt verification, and packaged Web assets/API without a live
 model. Real-model evidence is recorded separately in `VALIDATION.md`.
+
+## v1.1 opt-in extensions
+
+The existing arguments and defaults remain valid. Memory and planning default to
+off, and delegation exists only when a Python host explicitly registers trusted
+peers. `MemoryStore`, `SQLiteMemoryStore`, `MemoryRecord`, `MemoryConflictError`,
+`Planner`, `ModelPlanner`, `Plan`, `PlanStep`, `Peer`, `PeerResult`, `LocalPeer`,
+`A2APeer`, `build_a2a_app`, and `ObservationHub` are additive public imports. A2A
+dependencies load only when used; install the `a2a` extra for official 1.0
+HTTP+JSON support.
+
+`RunOutcome.execution_id` and event/receipt execution IDs are additive. `observe`
+adds raw message/context observations for a bounded in-memory inspector; default
+embedding runs do not emit them. The CLI `--events` remains metadata-oriented.
+Usage totals become null when an extension cannot report a complete counter;
+separate measured main usage and conservative extension reservations remain
+available. Provisional peer usage never refunds a still-running task's budget.
+
+Synchronous model calls enter and exit the SDK lifecycle on success or failure;
+owned HTTP clients close and may be recreated on a later run. Async embedding
+hosts use `asyncio.to_thread(runtime.run, ...)`. Custom model factories and memory,
+planning, and peer implementations remain trusted host code, not sandboxes.
+
+The audit schema stays at 3. Optional memory uses independently versioned
+`memory_*` tables (version 1), normally in `memory.db`. A memory command explicitly
+opts into human management without enabling runtime memory tools or requiring a
+model endpoint. Approval/update/forget commands require the revision reviewed.
+Forgotten records leave retrieval but are not securely erased from storage,
+archived history, or backups. Workspace scopes isolate retrieval, not OS users.
+
+`/inspector` is local-only and read-only. It retains recent observations, not a
+durable distributed task journal; its SSE connection is separate from A2A
+streaming. See [module contracts and usage](MODULES.md) for limitations.
+The optional A2A CI job verifies the official SDK over real loopback HTTP.

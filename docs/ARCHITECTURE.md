@@ -5,6 +5,8 @@
 One bounded model/tool loop sits inside a local, synchronous runtime. PydanticAI
 owns iteration; project code owns permissions, file boundaries, reversible edits,
 state, and receipts. CLI, Web, and Python hosts use the same runtime.
+The diagram describes the default kernel. v1.1 attaches explicit optional memory,
+planning, peer, and observation ports; see [module contracts](MODULES.md).
 
 ```mermaid
 flowchart LR
@@ -31,10 +33,14 @@ flowchart LR
 | Runtime, dependencies, bounded iteration | [agent.py](../src/minimal_local_agent/agent.py); [runtime.py](../src/minimal_local_agent/runtime.py) is a public re-export |
 | Settings and replaceable model construction | [config.py](../src/minimal_local_agent/config.py), [models.py](../src/minimal_local_agent/models.py) |
 | Per-request context guard and explicit reducer | [context.py](../src/minimal_local_agent/context.py) |
+| Shared execution budget and SDK lifecycle | [execution_budget.py](../src/minimal_local_agent/execution_budget.py), [instrumentation.py](../src/minimal_local_agent/instrumentation.py), [model_execution.py](../src/minimal_local_agent/model_execution.py) |
+| Optional memory, planner, and peer ports | [memory.py](../src/minimal_local_agent/memory.py), [planning.py](../src/minimal_local_agent/planning.py), [peers.py](../src/minimal_local_agent/peers.py), [a2a_adapter.py](../src/minimal_local_agent/a2a_adapter.py) |
+| Built-in vs optional tool registration | [builtin_tools.py](../src/minimal_local_agent/builtin_tools.py), [extension_tools.py](../src/minimal_local_agent/extension_tools.py) |
 | Tool visibility and file confinement | [policy.py](../src/minimal_local_agent/policy.py), [security.py](../src/minimal_local_agent/security.py), [workspace.py](../src/minimal_local_agent/workspace.py) |
 | Diff, approval, transactions, rollback, undo | [mutations.py](../src/minimal_local_agent/mutations.py) |
 | Audited host extensions | [read_tools.py](../src/minimal_local_agent/read_tools.py), [mcp.py](../src/minimal_local_agent/mcp.py) |
 | Persistence, migrations, receipts, events | [store.py](../src/minimal_local_agent/store.py), [events.py](../src/minimal_local_agent/events.py) |
+| Bounded live observation (not durable audit) | [observation.py](../src/minimal_local_agent/observation.py) |
 | Interfaces and evaluation | [cli.py](../src/minimal_local_agent/cli.py), [web.py](../src/minimal_local_agent/web.py), [web_assets](../src/minimal_local_agent/web_assets), [evals.py](../src/minimal_local_agent/evals.py) |
 
 ## Mechanisms that matter
@@ -65,6 +71,8 @@ Use `ReadTool`, `ModelFactory`, `ContextReducer`, or an explicitly allowlisted l
 MCP server before proposing a new core module. Host Python functions and MCP
 allowlists are trusted declarations, not sandboxes. Remote model calls transmit
 prompts and tool results; "local-first" does not mean remote data never leaves.
+The v1.1 `MemoryStore`, `Planner`, and `Peer` ports follow the same explicit host
+composition rule and are off by default. They do not introduce another scheduler.
 
 The five built-in tools remain list, read, search, write, and exact edit. Shell,
 deletion tools, browser control, background scheduling, semantic memory, hidden
