@@ -32,6 +32,7 @@ from minimal_local_agent.extension_tools import register_extension_tools
 from minimal_local_agent.instrumentation import RuntimeHooks
 from minimal_local_agent.mcp import build_mcp_bundle
 from minimal_local_agent.memory import MemoryStore, SQLiteMemoryStore
+from minimal_local_agent.model_execution import managed_run
 from minimal_local_agent.models import ConfiguredModelFactory, ModelFactory
 from minimal_local_agent.mutations import MutationEngine, sha256_text
 from minimal_local_agent.peers import LocalPeer, Peer
@@ -486,7 +487,8 @@ class AgentRuntime:
                         )
                     ]
                 )
-            result = self.agent.run_sync(
+            result = managed_run(
+                self.agent,
                 prompt,
                 deps=dependencies,
                 message_history=list(history),

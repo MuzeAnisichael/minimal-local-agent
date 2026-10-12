@@ -152,7 +152,10 @@ class ModelPlanner:
         if len(payload.encode("utf-8")) > self.settings.max_context_bytes:
             raise ValueError("Planning input exceeds max_context_bytes")
         output_budget = min(output_tokens_limit, self.settings.max_output_tokens)
-        result = self.agent.run_sync(
+        from minimal_local_agent.model_execution import managed_run
+
+        result = managed_run(
+            self.agent,
             payload,
             model_settings=ModelSettings(max_tokens=output_budget),
             usage_limits=UsageLimits(
