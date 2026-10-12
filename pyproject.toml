@@ -34,6 +34,10 @@ mcp = [
   "pydantic-ai-slim[mcp]>=1.107.1,<2.0.0",
   "mcp<2.0.0",
 ]
+a2a = [
+  "a2a-sdk[http-server]>=1.2.2,<1.3.0",
+  "uvicorn>=0.30,<1.0",
+]
 
 [project.scripts]
 minimal-agent = "minimal_local_agent.cli:main"
