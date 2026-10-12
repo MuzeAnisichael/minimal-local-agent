@@ -25,6 +25,15 @@ max_transaction_files = 8
 max_diff_chars = 40000
 max_mcp_result_chars = 100000
 
+# Optional modules are off by default; edit only your ignored agent.toml.
+[memory]
+enabled = false
+# database = ".minimal-local-agent/memory.db"
+# scope = "my-project" # Default: a workspace-path fingerprint; not a session ID.
+
+[planner]
+enabled = false # One advisory plan, charged to the SAME run budget.
+
 # Optional MCP clients are loopback-only and expose only explicitly named
 # tools. Install support with: pip install -e ".[mcp]"
 # [[mcp.servers]]

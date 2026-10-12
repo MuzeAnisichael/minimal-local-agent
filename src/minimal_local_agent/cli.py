@@ -12,6 +12,7 @@ from minimal_local_agent import __version__
 from minimal_local_agent.config import Settings
 from minimal_local_agent.evals import evaluate_model
 from minimal_local_agent.events import RuntimeEvent
+from minimal_local_agent.memory_cli import add_memory_parser, manage_memory
 from minimal_local_agent.models import probe_model
 from minimal_local_agent.policy import PolicyEngine
 from minimal_local_agent.runtime import AgentRuntime
@@ -144,6 +145,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Loopback host (default: 127.0.0.1)",
     )
     web.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
+    for command in (run, chat, web, capabilities):
+        command.add_argument(
+            "--memory",
+            action="store_true",
+            help="Opt in to approved memory retrieval and candidate proposals",
+        )
+        command.add_argument(
+            "--planner",
+            action="store_true",
+            help="Opt in to a budgeted advisory planner",
+        )
+    add_memory_parser(commands)
     return parser
 
 
@@ -297,8 +310,9 @@ def _capabilities(settings: Settings, json_output: bool) -> int:
     external_tools = tuple(
         tool for server in settings.mcp_servers for tool in server.visible_tools
     )
-    manifest = policy.manifest(external_tools)
-    fingerprint = policy.fingerprint(external_tools)
+    extensions = ("memory_search", "memory_propose") if settings.memory_enabled else ()
+    manifest = policy.manifest(external_tools, extension_tools=extensions)
+    fingerprint = policy.fingerprint(external_tools, extension_tools=extensions)
     if json_output:
         print(
             json.dumps(
@@ -469,12 +483,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         settings = Settings.load(args.config)
+        if getattr(args, "memory", False):
+            settings = replace(settings, memory_enabled=True)
+        if getattr(args, "planner", False):
+            settings = replace(settings, planning_enabled=True)
         if getattr(args, "read_only", False):
             settings = replace(settings, write_policy="deny")
         elif getattr(args, "dry_run", False):
             settings = replace(settings, write_policy="preview")
         if args.command == "doctor":
             return _doctor(settings)
+        if args.command == "memory":
+            return manage_memory(settings, args)
         if args.command == "run":
             return _run_once(settings, args)
         if args.command == "chat":
