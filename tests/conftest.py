@@ -32,13 +32,18 @@ def make_settings(tmp_path: Path, **sections: Any) -> Settings:
 @pytest.fixture
 def runtime_factory(tmp_path: Path):
     def make(
-        script: dict[str, Any], approver=None, models=None, **sections: Any
+        script: dict[str, Any],
+        approver=None,
+        models=None,
+        extra_tools=(),
+        **sections: Any,
     ) -> AgentRuntime:
         settings = make_settings(tmp_path, **sections)
         return AgentRuntime(
             settings,
             models=models or {"default": scripted_model(script)},
             approver=approver or (lambda _tool, _preview: True),
+            tools=extra_tools,
         )
 
     return make

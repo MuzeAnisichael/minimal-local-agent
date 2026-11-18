@@ -85,6 +85,13 @@ class ToolRegistry:
         for tool in tools:
             self.add(tool)
 
+    def replace(self, tool: Tool) -> None:
+        """替换同名工具（故障注入和测试使用）。"""
+
+        if tool.name not in self._tools:
+            raise KeyError(tool.name)
+        self._tools[tool.name] = tool
+
     def add_effect(self, kind: str, handler: EffectHandler) -> None:
         self._effects[kind] = handler
 
