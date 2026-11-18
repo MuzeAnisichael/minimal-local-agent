@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from minimal_local_agent.tools.fs import Workspace, WorkspaceGuard, WorkspaceSecurityError
+from minimal_local_agent.tools.fs import (
+    Workspace,
+    WorkspaceGuard,
+    WorkspaceSecurityError,
+)
 
 
 def test_guard_resolves_inside_and_rejects_escape(tmp_path: Path) -> None:

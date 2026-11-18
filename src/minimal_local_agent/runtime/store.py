@@ -6,7 +6,7 @@ import json
 import sqlite3
 import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -103,10 +103,8 @@ def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
     data = dict(row)
     for key in ("options", "result", "data", "state", "prepared"):
         if isinstance(data.get(key), str):
-            try:
+            with suppress(json.JSONDecodeError):
                 data[key] = json.loads(data[key])
-            except json.JSONDecodeError:
-                pass
     return data
 
 
@@ -116,7 +114,9 @@ class Store:
         if str(path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
+        self._db = sqlite3.connect(
+            str(path), check_same_thread=False, isolation_level=None
+        )
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("PRAGMA foreign_keys=ON")
@@ -151,7 +151,11 @@ class Store:
 
     # ---- 任务 ----
     def create_task(
-        self, task_id: str, goal: str, options: dict[str, Any], parent_id: str | None = None
+        self,
+        task_id: str,
+        goal: str,
+        options: dict[str, Any],
+        parent_id: str | None = None,
     ) -> None:
         stamp = now()
         with self.tx() as db:
@@ -164,10 +168,13 @@ class Store:
     def task(self, task_id: str) -> dict[str, Any] | None:
         return self._one("SELECT * FROM tasks WHERE id = ?", (task_id,))
 
-    def tasks(self, limit: int = 20, parent_id: str | None = None) -> list[dict[str, Any]]:
+    def tasks(
+        self, limit: int = 20, parent_id: str | None = None
+    ) -> list[dict[str, Any]]:
         if parent_id is not None:
             return self._all(
-                "SELECT * FROM tasks WHERE parent_id = ? ORDER BY created_at", (parent_id,)
+                "SELECT * FROM tasks WHERE parent_id = ? ORDER BY created_at",
+                (parent_id,),
             )
         return self._all(
             "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?", (limit,)
@@ -185,7 +192,13 @@ class Store:
             db.execute(
                 "UPDATE tasks SET status = ?, result = ?, error = ?, updated_at = ? "
                 "WHERE id = ?",
-                (status, None if result is None else _dump(result), error, now(), task_id),
+                (
+                    status,
+                    None if result is None else _dump(result),
+                    error,
+                    now(),
+                    task_id,
+                ),
             )
 
     def request_cancel(self, task_id: str) -> bool:
@@ -221,7 +234,9 @@ class Store:
             )
 
     def steps(self, task_id: str) -> list[dict[str, Any]]:
-        return self._all("SELECT * FROM steps WHERE task_id = ? ORDER BY seq", (task_id,))
+        return self._all(
+            "SELECT * FROM steps WHERE task_id = ? ORDER BY seq", (task_id,)
+        )
 
     # ---- 事件 ----
     def add_event(
@@ -263,7 +278,9 @@ class Store:
                 "SELECT * FROM events WHERE task_id = ? AND kind = ? ORDER BY id",
                 (task_id, kind),
             )
-        return self._all("SELECT * FROM events WHERE task_id = ? ORDER BY id", (task_id,))
+        return self._all(
+            "SELECT * FROM events WHERE task_id = ? ORDER BY id", (task_id,)
+        )
 
     def event(self, event_id: int) -> dict[str, Any] | None:
         return self._one("SELECT * FROM events WHERE id = ?", (event_id,))
@@ -308,7 +325,13 @@ class Store:
         )
 
     def ledger_open(
-        self, key: str, task_id: str, step_id: str, call_id: str, tool: str, args_sha: str
+        self,
+        key: str,
+        task_id: str,
+        step_id: str,
+        call_id: str,
+        tool: str,
+        args_sha: str,
     ) -> None:
         stamp = now()
         with self.tx() as db:
@@ -335,7 +358,9 @@ class Store:
             )
 
     # ---- 记忆 ----
-    def add_note(self, scope: str, task_id: str | None, text: str, keywords: str) -> None:
+    def add_note(
+        self, scope: str, task_id: str | None, text: str, keywords: str
+    ) -> None:
         with self.tx() as db:
             db.execute(
                 "INSERT INTO memory_notes (scope, task_id, text, keywords, created_at) "

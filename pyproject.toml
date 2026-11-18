@@ -56,3 +56,5 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+# 格式化器负责代码行宽；中文注释和长字符串不再单独报错。
+ignore = ["E501"]

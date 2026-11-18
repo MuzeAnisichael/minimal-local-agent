@@ -49,9 +49,7 @@ class FileChangeSet:
         return [change.path for change in self.changes]
 
     def diff(self) -> str:
-        return "\n".join(
-            unified_diff(c.path, c.before, c.after) for c in self.changes
-        )
+        return "\n".join(unified_diff(c.path, c.before, c.after) for c in self.changes)
 
     def to_dict(self) -> dict[str, Any]:
         return {"changes": [change.to_dict() for change in self.changes]}

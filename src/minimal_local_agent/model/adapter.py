@@ -46,7 +46,9 @@ def build_model(config: ModelConfig) -> Model:
         from pydantic_ai.models.ollama import OllamaModel
         from pydantic_ai.providers.ollama import OllamaProvider
 
-        return OllamaModel(config.model, provider=OllamaProvider(base_url=config.base_url))
+        return OllamaModel(
+            config.model, provider=OllamaProvider(base_url=config.base_url)
+        )
     if config.provider == "openai-compatible":
         from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.profiles.openai import OpenAIModelProfile
@@ -138,7 +140,9 @@ class ModelRouter:
         overrides = overrides or {}
         used = {n for r in ("plan", "act", "summarize") for n in getattr(routing, r)}
         adapters = {
-            name: ModelAdapter(name, models[name], overrides.get(name) or build_model(models[name]))
+            name: ModelAdapter(
+                name, models[name], overrides.get(name) or build_model(models[name])
+            )
             for name in sorted(used)
         }
         return cls(adapters, routing)

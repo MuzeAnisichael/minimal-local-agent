@@ -63,7 +63,9 @@ def test_external_edit_is_a_conflict(tmp_path: Path) -> None:
     ws = _ws(tmp_path)
     ws.write_file("note.txt", "same same\n")
     with pytest.raises(ValueError, match="exactly once"):
-        files.prepare_edits(ws, [{"path": "note.txt", "old_text": "same", "new_text": "x"}])
+        files.prepare_edits(
+            ws, [{"path": "note.txt", "old_text": "same", "new_text": "x"}]
+        )
     cs = files.prepare_edits(
         ws, [{"path": "note.txt", "old_text": "same same", "new_text": "ready"}]
     )

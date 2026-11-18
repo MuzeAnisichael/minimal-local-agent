@@ -1,0 +1,64 @@
+# 复制为 agent.toml 后修改；agent.toml 已被 Git 忽略。
+
+[workspace]
+root = "workspace"
+state_dir = ".mla"          # 状态库：.mla/state.db
+
+[models.default]
+provider = "ollama"         # ollama | openai-compatible
+model = "qwen3.5:9b"
+base_url = "http://localhost:11434/v1"
+temperature = 0.1
+# 配置价格后才会计算成本（美元 / 百万 token）
+# input_price_per_mtok = 0.0
+# output_price_per_mtok = 0.0
+
+# 第二个模型，可作为回退或专门用于规划
+# [models.remote]
+# provider = "openai-compatible"
+# model = "gpt-4.1-mini"
+# base_url = "https://api.example.com/v1"
+# api_key_env = "MODEL_API_KEY"
+
+[routing]                   # 按角色选模型，靠后的是失败回退
+plan = ["default"]
+act = ["default"]
+summarize = ["default"]
+
+[budget]
+requests = 16
+tool_calls = 32
+output_tokens = 16000
+# cost_usd = 0.5
+max_output_tokens_per_request = 2048
+
+[context]
+max_tokens = 24000
+compaction = "truncate"     # truncate | summarize
+keep_recent_steps = 4
+
+[tools]
+timeout_s = 30
+
+[policy]
+write = "ask"               # allow | ask | preview | deny
+# [policy.tools]
+# search_text = "deny"
+
+[planning]
+enabled = true
+max_replans = 2             # 校验失败后最多重新执行几轮
+
+[recovery]
+enabled = true
+tool_retries = 1            # 工具超时后的自动重试次数
+compensate_on_failure = true
+
+[memory]
+strategy = "none"           # none | episodic
+
+# [[mcp.servers]]
+# name = "notes"
+# command = ["python", "notes_server.py"]   # 或 url = "http://127.0.0.1:8000/mcp"
+# tools = { search_notes = "read", add_note = "write" }
+# idempotent = ["add_note"]
