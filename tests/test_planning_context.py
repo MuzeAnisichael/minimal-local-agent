@@ -176,3 +176,8 @@ def test_token_estimate_counts_cjk_per_character() -> None:
     ascii_req = [ModelRequest.user_text_prompt("a" * 400)]
     cjk_req = [ModelRequest.user_text_prompt("中" * 400)]
     assert ctxmod.estimate_tokens(cjk_req) > ctxmod.estimate_tokens(ascii_req) * 2
+
+
+def test_parse_plan_skips_braces_and_code_fences() -> None:
+    text = 'Plan for {goal}:\n```json\n{"steps": [{"title": "read"}]}\n```\nThat is all {ok}.'
+    assert [s.title for s in parse_plan(text).steps] == ["read"]

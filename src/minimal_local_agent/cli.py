@@ -111,6 +111,10 @@ def _parser() -> argparse.ArgumentParser:
     ev.add_argument("--no-faults", action="store_true", help="不注入故障")
     ev.add_argument("--repeat", type=int, default=1)
     ev.add_argument("--out", help="把完整报告写成 JSON")
+    ev.add_argument(
+        "--model", help="在线评测时固定使用配置里的这个模型（所有角色都用它）"
+    )
+    ev.add_argument("--only", help="只跑这些任务族，逗号分隔")
     return parser
 
 

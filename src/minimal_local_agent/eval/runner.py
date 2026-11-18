@@ -213,9 +213,13 @@ class EvalRunner:
         offline: bool = True,
         inject_faults: bool = True,
         workdir: Path | None = None,
+        model: str | None = None,
     ) -> None:
+        if model is not None and not offline and model not in settings.models:
+            raise ValueError(f"Unknown model: {model}")
         self.settings = settings
         self.offline = offline
+        self.model = None if offline else model
         self.inject_faults = inject_faults
         self.workdir = workdir
 
@@ -246,6 +250,9 @@ class EvalRunner:
                 "act": ["default"],
                 "summarize": ["default"],
             }
+        elif self.model:
+            # 固定模型：所有角色只用这一个模型，不回退
+            data["routing"] = {r: [self.model] for r in ("plan", "act", "summarize")}
         names = {
             "python": sys.executable,
             "workspace": str(run_dir / "ws"),
@@ -264,9 +271,11 @@ class EvalRunner:
             return {"default": faults.BadCallModel(model) if bad else model}
         if not bad:
             return None
+        routing = settings.routing
+        used = {n for r in ("plan", "act", "summarize") for n in getattr(routing, r)}
         return {
-            name: faults.BadCallModel(build_model(cfg))
-            for name, cfg in settings.models.items()
+            name: faults.BadCallModel(build_model(settings.models[name]))
+            for name in sorted(used)
         }
 
     def _runtime(self, settings: Settings, case: dict[str, Any], fault: Any) -> Any:
@@ -356,6 +365,33 @@ class EvalRunner:
             task_id=result.task_id,
         )
 
+    def _safe_case(
+        self,
+        family: dict[str, Any],
+        case: dict[str, Any],
+        strategy: str,
+        run_dir: Path,
+        repeat: int,
+    ) -> CaseResult:
+        """评测框架自身出错（例如连不上模型服务）时记为 error，不中断整轮评测。"""
+
+        try:
+            return self.run_case(family, case, strategy, run_dir, repeat)
+        except Exception as exc:
+            if self.offline:
+                raise  # 离线结果应当确定，出错说明有 bug
+            fault = case.get("fault") if self.inject_faults else None
+            return CaseResult(
+                family["family"],
+                case["id"],
+                strategy,
+                repeat,
+                "error",
+                fault,
+                {},
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
     def run(
         self,
         families: list[dict[str, Any]],
@@ -381,7 +417,7 @@ class EvalRunner:
                         run_dir = workdir / family["family"] / strategy / str(n)
                         for case in family["cases"]:
                             results.append(
-                                self.run_case(family, case, strategy, run_dir, n)
+                                self._safe_case(family, case, strategy, run_dir, n)
                             )
         finally:
             if owned:
@@ -414,6 +450,7 @@ def report(
     titles = {f["family"]: f.get("title", f["family"]) for f in families}
     return {
         "mode": "offline" if runner.offline else "online",
+        "model": "scripted" if runner.offline else (runner.model or "routing"),
         "faults": runner.inject_faults,
         "strategies": {s: STRATEGIES[s] for s in strategies},
         "budget": runner.settings.budget.model_dump(mode="json"),
@@ -459,7 +496,7 @@ COLUMNS = ["策略", "成功率", "故障恢复率", "每成功成本(USD)", "�
 def render(data: dict[str, Any]) -> str:
     widths = [max(10, _width(c)) for c in COLUMNS]
     lines = [
-        f"评测模式：{'离线脚本' if data['mode'] == 'offline' else '在线模型'}"
+        f"评测模式：{'离线脚本' if data['mode'] == 'offline' else '在线模型 ' + data['model']}"
         f"，故障注入：{'开' if data['faults'] else '关'}"
     ]
 
@@ -488,8 +525,14 @@ def render(data: dict[str, Any]) -> str:
 def main(settings: Settings, args: argparse.Namespace) -> int:
     strategies = [s.strip() for s in args.strategies.split(",") if s.strip()]
     families = load_families(args.families)
+    if args.only:
+        wanted = {f.strip() for f in args.only.split(",") if f.strip()}
+        families = [f for f in families if f["family"] in wanted]
     runner = EvalRunner(
-        settings, offline=args.offline, inject_faults=not args.no_faults
+        settings,
+        offline=args.offline,
+        inject_faults=not args.no_faults,
+        model=args.model,
     )
     data = runner.run(families, strategies, repeat=max(1, args.repeat))
     print(render(data))

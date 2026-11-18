@@ -13,12 +13,22 @@ temperature = 0.1
 # input_price_per_mtok = 0.0
 # output_price_per_mtok = 0.0
 
-# 第二个模型，可作为回退或专门用于规划
-# [models.remote]
+# 远程模型：密钥只从环境变量读取，不写进配置文件
+# [models.deepseek]
 # provider = "openai-compatible"
-# model = "gpt-4.1-mini"
-# base_url = "https://api.example.com/v1"
-# api_key_env = "MODEL_API_KEY"
+# model = "deepseek-chat"
+# base_url = "https://api.deepseek.com/v1"
+# api_key_env = "DEEPSEEK_API_KEY"
+# input_price_per_mtok = 0.27     # 按官网当前价格填写，用于计算成本
+# output_price_per_mtok = 1.10
+#
+# [models.openrouter]
+# provider = "openai-compatible"
+# model = "qwen/qwen3-coder"       # 任意支持工具调用的 OpenRouter 模型
+# base_url = "https://openrouter.ai/api/v1"
+# api_key_env = "OPENROUTER_API_KEY"
+#
+# 评测时固定一个模型：mla eval --model deepseek --out report.json
 
 [routing]                   # 按角色选模型，靠后的是失败回退
 plan = ["default"]

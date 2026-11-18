@@ -55,13 +55,24 @@ class Plan:
         )
 
 
+def _first_object(text: str) -> dict[str, Any]:
+    """真实模型常在 JSON 前后加说明或代码块标记，逐个尝试从每个 { 开始解码。"""
+
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text):
+        try:
+            value, _ = decoder.raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and "steps" in value:
+            return value
+    raise ValueError("No JSON plan object in planner output")
+
+
 def parse_plan(text: str) -> Plan:
     """从模型输出里取第一个 JSON 对象；格式不对时抛 ValueError。"""
 
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError("No JSON object in planner output")
-    data = json.loads(match.group(0))
+    data = _first_object(text)
     raw = data.get("steps")
     if not isinstance(raw, list) or not raw:
         raise ValueError("Planner output has no steps")
