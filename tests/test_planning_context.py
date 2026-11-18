@@ -181,3 +181,23 @@ def test_token_estimate_counts_cjk_per_character() -> None:
 def test_parse_plan_skips_braces_and_code_fences() -> None:
     text = 'Plan for {goal}:\n```json\n{"steps": [{"title": "read"}]}\n```\nThat is all {ok}.'
     assert [s.title for s in parse_plan(text).steps] == ["read"]
+
+
+def test_routing_defaults_to_the_only_configured_model() -> None:
+    from minimal_local_agent.config import Settings
+
+    settings = Settings.model_validate(
+        {
+            "models": {
+                "deepseek": {
+                    "provider": "openai-compatible",
+                    "model": "m",
+                    "base_url": "https://x/v1",
+                    "api_key_env": "K",
+                }
+            }
+        }
+    )
+    assert settings.routing.plan == ["deepseek"] and settings.routing.act == [
+        "deepseek"
+    ]

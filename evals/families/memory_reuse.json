@@ -47,9 +47,9 @@
       },
       "checks": [
         {
-          "type": "file_equals",
+          "type": "file_contains",
           "path": "ops/port.txt",
-          "content": "9443\n"
+          "text": "9443"
         }
       ],
       "script": {

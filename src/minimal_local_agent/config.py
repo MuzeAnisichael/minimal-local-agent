@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -122,6 +122,21 @@ class Settings(_Strict):
     recovery: RecoveryConfig = Field(default_factory=RecoveryConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_routing(cls, data: Any) -> Any:
+        """没写 [routing] 且没有名为 default 的模型时，所有角色都用配置里的第一个模型。"""
+
+        if isinstance(data, dict) and "routing" not in data:
+            models = data.get("models")
+            if isinstance(models, dict) and models and "default" not in models:
+                first = next(iter(models))
+                data = {
+                    **data,
+                    "routing": {r: [first] for r in ("plan", "act", "summarize")},
+                }
+        return data
 
     @model_validator(mode="after")
     def _routes_exist(self) -> Settings:

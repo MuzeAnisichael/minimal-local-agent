@@ -454,7 +454,7 @@ def report(
         "faults": runner.inject_faults,
         "strategies": {s: STRATEGIES[s] for s in strategies},
         "budget": runner.settings.budget.model_dump(mode="json"),
-        "prices": OFFLINE_PRICES if runner.offline else None,
+        "prices": OFFLINE_PRICES if runner.offline else _prices(runner),
         "families": {
             name: {
                 "title": titles.get(name, name),
@@ -465,6 +465,27 @@ def report(
         "overall": {s: m.to_dict() for s, m in overall.items()},
         "skipped": skipped,
         "cases": [r.to_dict() for r in results],
+    }
+
+
+def _prices(runner: EvalRunner) -> dict[str, Any]:
+    names = (
+        [runner.model]
+        if runner.model
+        else sorted(
+            {
+                n
+                for r in ("plan", "act", "summarize")
+                for n in getattr(runner.settings.routing, r)
+            }
+        )
+    )
+    return {
+        name: {
+            "input_price_per_mtok": runner.settings.models[name].input_price_per_mtok,
+            "output_price_per_mtok": runner.settings.models[name].output_price_per_mtok,
+        }
+        for name in names
     }
 
 
