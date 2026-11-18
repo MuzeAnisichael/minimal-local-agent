@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 
+import pytest
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
@@ -35,10 +36,8 @@ def test_plan_is_created_updated_and_survives_resume(runtime_factory) -> None:
     }
     rt = runtime_factory(script)
     faults.crash_before_tool(rt, "write_file")
-    try:
+    with pytest.raises(faults.SimulatedCrash):
         rt.run("x")
-    except faults.SimulatedCrash:
-        pass
     task_id = rt.store.tasks(1)[0]["id"]
     state = rt.load_state(task_id)
     assert state.plan is not None and state.plan.steps[0].status == "done"
