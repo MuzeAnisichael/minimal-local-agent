@@ -112,20 +112,23 @@ class AgentRuntime:
         return token
 
     async def _ensure_mcp(self) -> None:
-        if self._mcp is not None or not self.settings.mcp.servers:
+        if not self.settings.mcp.servers:
             return
-        from minimal_local_agent.tools.mcp import MCPConnector
+        if self._mcp is None:
+            from minimal_local_agent.tools.mcp import MCPConnector
 
-        self._mcp = MCPConnector(self.settings.mcp, self.settings.tools)
-        tools, effects = await self._mcp.connect()
-        for kind, handler in effects.items():
-            self.registry.add_effect(kind, handler)
-        self.registry.extend(tools)
+            self._mcp = MCPConnector(self.settings.mcp, self.settings.tools)
+            await self._mcp.connect()
+            tools, effects = self._mcp.build()
+            for kind, handler in effects.items():
+                self.registry.add_effect(kind, handler)
+            self.registry.extend(tools)
+        else:
+            await self._mcp.connect()  # 每次 asyncio.run 重新连接；工具按服务器名找会话
 
     async def aclose(self) -> None:
         if self._mcp is not None:
             await self._mcp.close()
-            self._mcp = None
 
     def new_task(
         self,
