@@ -1,0 +1,147 @@
+{
+  "family": "memory_reuse",
+  "title": "经验复用",
+  "description": "同一工作区里的相关任务依次执行：第一个任务查到的信息被记成经验，后续任务召回后可以少走几步。离线脚本用 variants 模拟“看到经验就走捷径”的模型；最后一个用例的调用预算只够走捷径。",
+  "cases": [
+    {
+      "id": "mem-discover",
+      "goal": "gateway 服务监听哪个端口？",
+      "files": {
+        "services/auth.yaml": "name: auth\nport: 7001\n",
+        "services/billing.yaml": "name: billing\nport: 7002\n",
+        "services/gateway.yaml": "name: gateway\nlisten:\n  port: 9443\n"
+      },
+      "checks": [
+        {
+          "type": "answer_contains",
+          "text": "9443"
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "search_text",
+            "args": {
+              "query": "gateway"
+            }
+          },
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "services/gateway.yaml"
+            }
+          },
+          {
+            "text": "gateway 监听端口 9443"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mem-write-port",
+      "goal": "把 gateway 服务的端口写进 ops/port.txt",
+      "files": {
+        "services/auth.yaml": "name: auth\nport: 7001\n",
+        "services/billing.yaml": "name: billing\nport: 7002\n",
+        "services/gateway.yaml": "name: gateway\nlisten:\n  port: 9443\n"
+      },
+      "checks": [
+        {
+          "type": "file_equals",
+          "path": "ops/port.txt",
+          "content": "9443\n"
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "search_text",
+            "args": {
+              "query": "gateway"
+            }
+          },
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "services/gateway.yaml"
+            }
+          },
+          {
+            "tool": "write_file",
+            "args": {
+              "path": "ops/port.txt",
+              "content": "9443\n"
+            }
+          },
+          {
+            "text": "已写入 ops/port.txt"
+          }
+        ],
+        "variants": [
+          {
+            "when": "监听端口 9443",
+            "turns": [
+              {
+                "tool": "write_file",
+                "args": {
+                  "path": "ops/port.txt",
+                  "content": "9443\n"
+                }
+              },
+              {
+                "text": "已写入 ops/port.txt"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "mem-tight-budget",
+      "goal": "gateway 服务的端口号是多少？只回答数字",
+      "files": {
+        "services/auth.yaml": "name: auth\nport: 7001\n",
+        "services/billing.yaml": "name: billing\nport: 7002\n",
+        "services/gateway.yaml": "name: gateway\nlisten:\n  port: 9443\n"
+      },
+      "budget": {
+        "requests": 3
+      },
+      "checks": [
+        {
+          "type": "answer_contains",
+          "text": "9443"
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "search_text",
+            "args": {
+              "query": "gateway"
+            }
+          },
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "services/gateway.yaml"
+            }
+          },
+          {
+            "text": "9443"
+          }
+        ],
+        "variants": [
+          {
+            "when": "监听端口 9443",
+            "turns": [
+              {
+                "text": "9443"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

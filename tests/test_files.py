@@ -78,18 +78,29 @@ def test_external_edit_is_a_conflict(tmp_path: Path) -> None:
     assert ws.read_file("note.txt") == "external\n"
 
 
-def test_rejects_noop_duplicate_and_implicit_overwrite(tmp_path: Path) -> None:
+def test_rejects_noop_and_implicit_overwrite(tmp_path: Path) -> None:
     ws = _ws(tmp_path)
     ws.write_file("n.txt", "abc\n")
     with pytest.raises(FileExistsError):
         files.prepare_write(ws, "n.txt", "x", overwrite=False)
     with pytest.raises(ValueError, match="does not change"):
         files.prepare_write(ws, "n.txt", "abc\n", overwrite=True)
-    with pytest.raises(ValueError, match="twice"):
-        files.prepare_edits(
-            ws,
-            [
-                {"path": "n.txt", "old_text": "a", "new_text": "b"},
-                {"path": "n.txt", "old_text": "c", "new_text": "d"},
-            ],
-        )
+
+
+def test_edits_to_the_same_file_apply_in_order(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
+    ws.write_file("n.txt", "abc\n")
+    cs = files.prepare_edits(
+        ws,
+        [
+            {"path": "n.txt", "old_text": "a", "new_text": "x"},
+            {
+                "path": "n.txt",
+                "old_text": "xb",
+                "new_text": "y",
+            },  # 作用在上一条的结果上
+        ],
+    )
+    assert len(cs.changes) == 1
+    files.apply(ws, cs)
+    assert ws.read_file("n.txt") == "yc\n"

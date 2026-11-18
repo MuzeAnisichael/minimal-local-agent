@@ -10,10 +10,7 @@ import pytest
 
 pytest.importorskip("mcp")
 
-from pydantic_ai.models.wrapper import WrapperModel  # noqa: E402
-
 from minimal_local_agent.eval import faults  # noqa: E402
-from minimal_local_agent.model.scripted import scripted_model  # noqa: E402
 
 FIXTURE = Path(__file__).parent / "fixtures" / "notes_server.py"
 
@@ -75,46 +72,28 @@ def test_interrupted_mcp_write_replays_only_when_declared_idempotent(
         assert len(notes) == 1
 
 
-class _Router(WrapperModel):
-    """测试用：带工具但不含 run_subtask 的请求来自子任务，交给 child 脚本，其余交给 parent 脚本。"""
-
-    def __init__(self, child, parent) -> None:
-        super().__init__(parent)
-        self.child = child
-
-    async def request(self, messages, settings, params):
-        names = [t.name for t in params.function_tools]
-        is_child = bool(names) and "run_subtask" not in names
-        target = self.child if is_child else self.wrapped
-        return await target.request(messages, settings, params)
-
-
 def test_subtask_has_own_budget_and_restricted_tools(runtime_factory) -> None:
-    # 父子任务各用一份脚本，避免共用一个脚本模型时读错位置
-    parent = scripted_model(
-        {
-            "turns": [
-                {
-                    "tool": "run_subtask",
-                    "args": {
-                        "goal": "child: read a.txt",
-                        "tools": ["read_file"],
-                        "max_requests": 3,
-                    },
+    # 父子任务各用一份脚本：脚本里的 subtask 部分只播放给子任务的请求
+    script = {
+        "turns": [
+            {
+                "tool": "run_subtask",
+                "args": {
+                    "goal": "child: read a.txt",
+                    "tools": ["read_file"],
+                    "max_requests": 3,
                 },
-                {"text": "parent done"},
-            ]
-        }
-    )
-    child = scripted_model(
-        {
+            },
+            {"text": "parent done"},
+        ],
+        "subtask": {
             "turns": [
                 {"tool": "read_file", "args": {"path": "a.txt"}},
                 {"text": "child read it"},
             ]
-        }
-    )
-    rt = runtime_factory({}, models={"default": _Router(child, parent)})
+        },
+    }
+    rt = runtime_factory(script)
     rt.workspace.write_file("a.txt", "secret\n")
     result = rt.run(
         "parent", checks=[{"type": "answer_contains", "text": "parent done"}]

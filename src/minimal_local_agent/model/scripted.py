@@ -6,7 +6,14 @@
     {"plan": {...可选的计划 JSON...},
      "turns": [{"tool": "read_file", "args": {"path": "a.txt"}},
                {"tools": [{"tool": ..., "args": ...}, ...]},
-               {"text": "最终回答"}]}
+               {"text": "最终回答"}],
+     "variants": [{"when": "某段文字", "turns": [...]}],   # 可选
+     "subtask": {...子任务用的脚本...}}                      # 可选
+
+- variants：对话里（包括开头提示里召回的记忆）出现 when 文字时，改用这组回合。
+  用来模拟“模型看到了相关经验，就走捷径”，让离线评测能体现记忆策略的作用。
+- subtask：带工具但不含 run_subtask 的请求来自子任务（子任务不能再派生子任务），
+  交给这份脚本播放。
 
 当前回合号记在每个响应的 provider_response_id 里，所以上下文压缩、检查点恢复之后仍能接着播放。
 """
@@ -36,14 +43,36 @@ def _position(messages: list[ModelMessage]) -> int:
     return 0
 
 
+def _text_of(messages: list[ModelMessage]) -> str:
+    return json.dumps(list(messages), default=str, ensure_ascii=False)
+
+
+def _turns(
+    script: dict[str, Any], messages: list[ModelMessage]
+) -> list[dict[str, Any]]:
+    variants = script.get("variants") or []
+    if variants:
+        text = _text_of(messages)
+        for variant in variants:
+            if variant["when"] in text:
+                return list(variant["turns"])
+    return list(script.get("turns", []))
+
+
 def scripted_model(script: dict[str, Any], name: str = "scripted") -> FunctionModel:
-    turns: list[dict[str, Any]] = list(script.get("turns", []))
+    child = script.get("subtask")
 
     def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         usage_in = estimate_tokens(messages)
+        names = [t.name for t in info.function_tools]
+        active = (
+            child
+            if child is not None and names and "run_subtask" not in names
+            else script
+        )
         if not info.function_tools:  # 规划或摘要请求
             text = (
-                json.dumps(script.get("plan", DEFAULT_PLAN))
+                json.dumps(active.get("plan", DEFAULT_PLAN))
                 if _is_plan(messages)
                 else "summary"
             )
@@ -55,6 +84,7 @@ def scripted_model(script: dict[str, Any], name: str = "scripted") -> FunctionMo
                 model_name=name,
             )
         index = _position(messages)
+        turns = _turns(active, messages)
         turn = turns[index] if index < len(turns) else {"text": "done"}
         if "text" in turn:
             parts: list[Any] = [TextPart(turn["text"])]
@@ -85,8 +115,7 @@ def scripted_model(script: dict[str, Any], name: str = "scripted") -> FunctionMo
 
 
 def _is_plan(messages: list[ModelMessage]) -> bool:
-    text = json.dumps([m for m in messages], default=str)
-    return "planning a task" in text
+    return "planning a task" in _text_of(messages)
 
 
 __all__ = ["DEFAULT_PLAN", "scripted_model"]

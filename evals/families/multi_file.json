@@ -1,0 +1,232 @@
+{
+  "family": "multi_file",
+  "title": "多文件重构",
+  "description": "一次修改跨多个文件，作为一个变更集原子落盘。",
+  "cases": [
+    {
+      "id": "rename-function",
+      "goal": "把函数 add 改名为 plus，并更新所有调用处",
+      "files": {
+        "lib/mathx.py": "def add(a, b):\n    return a + b\n",
+        "app.py": "from lib.mathx import add\n\nprint(add(1, 2))\n",
+        "tests/test_mathx.py": "from lib.mathx import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
+      },
+      "checks": [
+        {
+          "type": "file_contains",
+          "path": "lib/mathx.py",
+          "text": "def plus(a, b):"
+        },
+        {
+          "type": "file_contains",
+          "path": "app.py",
+          "text": "print(plus(1, 2))"
+        },
+        {
+          "type": "file_contains",
+          "path": "tests/test_mathx.py",
+          "text": "assert plus(1, 2) == 3"
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "search_text",
+            "args": {
+              "query": "add"
+            }
+          },
+          {
+            "tool": "edit_files",
+            "args": {
+              "edits": [
+                {
+                  "path": "lib/mathx.py",
+                  "old_text": "def add(",
+                  "new_text": "def plus("
+                },
+                {
+                  "path": "app.py",
+                  "old_text": "import add",
+                  "new_text": "import plus"
+                },
+                {
+                  "path": "app.py",
+                  "old_text": "print(add(",
+                  "new_text": "print(plus("
+                },
+                {
+                  "path": "tests/test_mathx.py",
+                  "old_text": "import add",
+                  "new_text": "import plus"
+                },
+                {
+                  "path": "tests/test_mathx.py",
+                  "old_text": "assert add(",
+                  "new_text": "assert plus("
+                }
+              ]
+            }
+          },
+          {
+            "text": "已完成改名"
+          }
+        ]
+      }
+    },
+    {
+      "id": "rename-crash-after-write",
+      "goal": "把函数 add 改名为 plus（写盘后进程崩溃）",
+      "files": {
+        "lib/mathx.py": "def add(a, b):\n    return a + b\n",
+        "app.py": "from lib.mathx import add\n\nprint(add(1, 2))\n",
+        "tests/test_mathx.py": "from lib.mathx import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
+      },
+      "checks": [
+        {
+          "type": "file_contains",
+          "path": "lib/mathx.py",
+          "text": "def plus(a, b):"
+        },
+        {
+          "type": "file_contains",
+          "path": "app.py",
+          "text": "print(plus(1, 2))"
+        },
+        {
+          "type": "file_contains",
+          "path": "tests/test_mathx.py",
+          "text": "assert plus(1, 2) == 3"
+        }
+      ],
+      "fault": {
+        "type": "crash_during_write",
+        "kind": "files"
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "edit_files",
+            "args": {
+              "edits": [
+                {
+                  "path": "lib/mathx.py",
+                  "old_text": "def add(",
+                  "new_text": "def plus("
+                },
+                {
+                  "path": "app.py",
+                  "old_text": "import add",
+                  "new_text": "import plus"
+                },
+                {
+                  "path": "app.py",
+                  "old_text": "print(add(",
+                  "new_text": "print(plus("
+                },
+                {
+                  "path": "tests/test_mathx.py",
+                  "old_text": "import add",
+                  "new_text": "import plus"
+                },
+                {
+                  "path": "tests/test_mathx.py",
+                  "old_text": "assert add(",
+                  "new_text": "assert plus("
+                }
+              ]
+            }
+          },
+          {
+            "text": "已完成改名"
+          }
+        ]
+      }
+    },
+    {
+      "id": "rename-external-conflict",
+      "goal": "把配置项 TIMEOUT 改名为 REQUEST_TIMEOUT（期间有人改了 settings.py）",
+      "files": {
+        "settings.py": "TIMEOUT = 30\n",
+        "client.py": "from settings import TIMEOUT\n\n\ndef fetch(session, url):\n    return session.get(url, timeout=TIMEOUT)\n"
+      },
+      "checks": [
+        {
+          "type": "file_contains",
+          "path": "settings.py",
+          "text": "REQUEST_TIMEOUT = 30"
+        },
+        {
+          "type": "file_contains",
+          "path": "client.py",
+          "text": "timeout=REQUEST_TIMEOUT"
+        }
+      ],
+      "fault": {
+        "type": "external_edit",
+        "path": "settings.py",
+        "content": "TIMEOUT = 30\nRETRIES = 3\n"
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "edit_files",
+            "args": {
+              "edits": [
+                {
+                  "path": "settings.py",
+                  "old_text": "TIMEOUT = 30",
+                  "new_text": "REQUEST_TIMEOUT = 30"
+                },
+                {
+                  "path": "client.py",
+                  "old_text": "import TIMEOUT",
+                  "new_text": "import REQUEST_TIMEOUT"
+                },
+                {
+                  "path": "client.py",
+                  "old_text": "timeout=TIMEOUT",
+                  "new_text": "timeout=REQUEST_TIMEOUT"
+                }
+              ]
+            }
+          },
+          {
+            "text": "已完成改名"
+          },
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "settings.py"
+            }
+          },
+          {
+            "tool": "edit_files",
+            "args": {
+              "edits": [
+                {
+                  "path": "settings.py",
+                  "old_text": "TIMEOUT = 30",
+                  "new_text": "REQUEST_TIMEOUT = 30"
+                },
+                {
+                  "path": "client.py",
+                  "old_text": "import TIMEOUT",
+                  "new_text": "import REQUEST_TIMEOUT"
+                },
+                {
+                  "path": "client.py",
+                  "old_text": "timeout=TIMEOUT",
+                  "new_text": "timeout=REQUEST_TIMEOUT"
+                }
+              ]
+            }
+          },
+          {
+            "text": "已在最新内容上完成改名"
+          }
+        ]
+      }
+    }
+  ]
+}

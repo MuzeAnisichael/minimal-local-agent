@@ -174,12 +174,17 @@ class ToolExecutor:
     # ---- 只读 / 控制 / 子任务工具 ----
     async def _run(self, ctx: ToolContext, tool: Tool, args: dict[str, Any]) -> Any:
         assert tool.run is not None
+        value = await self._retrying(ctx, tool, lambda: tool.run(ctx, args))
+        return {"ok": True, "result": value}
+
+    async def _retrying(self, ctx: ToolContext, tool: Tool, start: Any) -> Any:
+        """超时后按恢复配置重试。只用于没有副作用的阶段（只读工具、写工具的 prepare）。"""
+
         attempts = 1 + (self.recovery.tool_retries if self.recovery.enabled else 0)
         timeout = tool.timeout_s or self.tools.timeout_s
         for attempt in range(1, attempts + 1):
             try:
-                value = await guarded(ctx, tool.run(ctx, args), timeout)
-                return {"ok": True, "result": value}
+                return await guarded(ctx, start(), timeout)
             except ToolTimeout:
                 ctx.tracer.emit(
                     "tool.timeout",
@@ -203,8 +208,8 @@ class ToolExecutor:
         if row is not None and row["status"] == "applying" and row.get("prepared"):
             return await self._reconcile(ctx, tool, row["prepared"])
 
-        timeout = tool.timeout_s or self.tools.timeout_s
-        prepared = await guarded(ctx, tool.prepare(ctx, args), timeout)
+        # prepare 只计算变更、不落盘，超时重试是安全的
+        prepared = await self._retrying(ctx, tool, lambda: tool.prepare(ctx, args))
         handler = self.registry.effect(prepared.kind)
         decision = self.policy.decision(tool)
         if decision == "preview":

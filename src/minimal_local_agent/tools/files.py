@@ -112,9 +112,13 @@ def prepare_write(
 def prepare_edits(
     ws: Workspace, edits: list[dict[str, Any]], *, max_files: int = 8
 ) -> FileChangeSet:
-    """每条 edit 为 {path, old_text, new_text}，old_text 必须在文件中恰好出现一次。"""
+    """每条 edit 为 {path, old_text, new_text}，old_text 必须在文件当前内容中恰好出现一次。
 
-    changes: list[FileChange] = []
+    同一文件的多条 edit 按顺序依次应用，合并成该文件的一个变更。
+    """
+
+    originals: dict[str, str] = {}
+    current: dict[str, str] = {}
     for edit in edits:
         path, old, new = edit["path"], edit["old_text"], edit["new_text"]
         if not old:
@@ -122,13 +126,16 @@ def prepare_edits(
         if old == new:
             raise ValueError(f"Edit for {path} does not change the file")
         relative = ws.guard.relative(ws.guard.resolve(path))
-        before = ws.read_file(relative)
-        count = before.count(old)
+        if relative not in current:
+            originals[relative] = current[relative] = ws.read_file(relative)
+        text = current[relative]
+        count = text.count(old)
         if count != 1:
             raise ValueError(
                 f"old_text must occur exactly once in {relative}; found {count}"
             )
-        changes.append(_change(relative, before, before.replace(old, new, 1)))
+        current[relative] = text.replace(old, new, 1)
+    changes = [_change(path, originals[path], after) for path, after in current.items()]
     return _check(changes, max_files)
 
 
