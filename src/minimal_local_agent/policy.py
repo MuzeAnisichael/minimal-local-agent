@@ -1,148 +1,39 @@
-"""Capability policy compiled into the actual model-visible tool surface."""
+"""工具权限：被拒绝的工具不会出现在模型可见的 schema 里；写操作按策略审批。"""
 
 from __future__ import annotations
 
-import hashlib
-import json
-from dataclasses import asdict, dataclass
-from typing import Literal
+from collections.abc import Callable
+from dataclasses import dataclass
 
-from minimal_local_agent.config import Settings
+from minimal_local_agent.config import Decision, PolicyConfig
+from minimal_local_agent.tools.registry import Tool
 
-Decision = Literal["allow", "ask", "deny", "preview"]
-Effect = Literal["read", "write", "external-read", "memory-candidate", "delegate"]
+# 审批回调：(工具名, 变更预览) -> 是否批准
+Approver = Callable[[str, str], bool]
 
-BUILTIN_EFFECTS: dict[str, Effect] = {
-    "list_files": "read",
-    "read_file": "read",
-    "search_text": "read",
-    "write_file": "write",
-    "edit_files": "write",
-}
 
-EXTENSION_EFFECTS: dict[str, Effect] = {
-    "memory_search": "read",
-    "memory_propose": "memory-candidate",
-    "delegate_task": "delegate",
-}
+def deny_all(_tool: str, _preview: str) -> bool:
+    return False
 
 
 @dataclass(frozen=True, slots=True)
-class Capability:
-    name: str
-    effect: Effect
-    decision: Decision
-    source: str
+class Policy:
+    config: PolicyConfig
 
-
-class PolicyEngine:
-    """Resolve defaults and explicit overrides without trusting the model."""
-
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
-        self.overrides = dict(settings.tool_policies)
-
-    def decision(self, name: str, effect: Effect | None = None) -> Decision:
-        effect = effect or BUILTIN_EFFECTS.get(name, "external-read")
-        if effect == "write" and self.settings.write_policy in {"deny", "preview"}:
-            # Global run modes are hard ceilings; per-tool overrides cannot turn a
-            # read-only or dry-run invocation back into a mutating one.
-            return self.settings.write_policy
-        explicit = self.overrides.get(name)
-        if explicit is not None:
-            return explicit  # Settings validates values.
-        if effect in {"read", "external-read", "memory-candidate", "delegate"}:
+    def decision(self, tool: Tool) -> Decision:
+        if tool.effect == "control":
             return "allow"
-        return "ask"
+        explicit = self.config.tools.get(tool.name)
+        if tool.effect == "write":
+            ceiling = self.config.write
+            # 全局 deny / preview 是硬上限，单个工具的覆盖不能放宽它。
+            if ceiling in {"deny", "preview"}:
+                return "deny" if explicit == "deny" else ceiling
+            return explicit or ceiling
+        return "deny" if explicit == "deny" else "allow"
 
-    def exposes(self, name: str, effect: Effect | None = None) -> bool:
-        return self.decision(name, effect) != "deny"
-
-    def capabilities(
-        self,
-        external_tools: tuple[str, ...] = (),
-        *,
-        python_tools: tuple[str, ...] = (),
-        extension_tools: tuple[str, ...] = (),
-    ) -> tuple[Capability, ...]:
-        values = [
-            Capability(
-                name=name,
-                effect=effect,
-                decision=self.decision(name, effect),
-                source="builtin",
-            )
-            for name, effect in BUILTIN_EFFECTS.items()
-        ]
-        values.extend(
-            Capability(
-                name=name,
-                effect="external-read",
-                decision=self.decision(name, "external-read"),
-                source="mcp",
-            )
-            for name in external_tools
-        )
-        values.extend(
-            Capability(
-                name=name,
-                effect="external-read",
-                decision=self.decision(name, "external-read"),
-                source="python",
-            )
-            for name in python_tools
-        )
-        values.extend(
-            Capability(
-                name=name,
-                effect=EXTENSION_EFFECTS[name],
-                decision=self.decision(name, EXTENSION_EFFECTS[name]),
-                source="peer" if name == "delegate_task" else "memory",
-            )
-            for name in extension_tools
-        )
-        return tuple(values)
-
-    def manifest(
-        self,
-        external_tools: tuple[str, ...] = (),
-        *,
-        python_tools: tuple[str, ...] = (),
-        extension_tools: tuple[str, ...] = (),
-    ) -> list[dict[str, str]]:
-        return [
-            asdict(capability)
-            for capability in self.capabilities(
-                external_tools,
-                python_tools=python_tools,
-                extension_tools=extension_tools,
-            )
-        ]
-
-    def fingerprint(
-        self,
-        external_tools: tuple[str, ...] = (),
-        *,
-        python_tools: tuple[str, ...] = (),
-        extension_tools: tuple[str, ...] = (),
-    ) -> str:
-        encoded = json.dumps(
-            self.manifest(
-                external_tools,
-                python_tools=python_tools,
-                extension_tools=extension_tools,
-            ),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
-        return hashlib.sha256(encoded).hexdigest()
+    def visible(self, tools: list[Tool]) -> list[Tool]:
+        return [tool for tool in tools if self.decision(tool) != "deny"]
 
 
-__all__ = [
-    "BUILTIN_EFFECTS",
-    "EXTENSION_EFFECTS",
-    "Capability",
-    "Decision",
-    "Effect",
-    "PolicyEngine",
-]
+__all__ = ["Approver", "Policy", "deny_all"]

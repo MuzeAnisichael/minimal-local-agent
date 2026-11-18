@@ -16,74 +16,23 @@ jobs:
         include:
           - os: ubuntu-latest
             python-version: "3.11"
-            dependencies: minimum
           - os: ubuntu-latest
-            python-version: "3.12"
-            dependencies: current
+            python-version: "3.13"
           - os: windows-latest
-            python-version: "3.11"
-            dependencies: current
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: Install
-        run: python -m pip install -e ".[dev]"
-      - name: Check oldest supported model library
-        if: matrix.dependencies == 'minimum'
-        run: python -m pip install "pydantic-ai-slim[openai]==1.107.1"
-      - name: Format
+      - name: 安装
+        run: python -m pip install -e ".[dev,mcp]"
+      - name: 格式检查
         run: ruff format --check .
       - name: Lint
         run: ruff check .
-      - name: Test
+      - name: 测试
         run: pytest
-
-  package:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install build tools
-        run: python -m pip install build
-      - name: Build wheel and source distribution
-        run: python -m build --outdir dist
-      - name: Check archives and fresh CLI, embedding, and Web installs
-        run: python scripts/release_check.py --distributions dist
-
-  mcp-extra:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-      - name: Install optional MCP client
-        run: python -m pip install -e ".[dev,mcp]"
-      - name: Import MCP integration
-        run: python -c "from minimal_local_agent.mcp import build_mcp_bundle"
-      - name: Test MCP integration
-        run: pytest tests/test_mcp.py
-
-  a2a-extra:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-      - name: Install optional A2A client and server
-        run: python -m pip install -e ".[dev,a2a]"
-      - name: Import official SDK HTTP integration
-        run: python -c "from a2a.client.transports.rest import RestTransport"
-      - name: Verify real loopback HTTP and budget contracts
-        run: pytest tests/test_a2a.py tests/test_peers.py tests/test_execution_budget.py
+      - name: 离线评测（脚本模型，验证恢复机制）
+        run: python -m minimal_local_agent eval --offline --out eval-report.json

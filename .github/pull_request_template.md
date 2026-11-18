@@ -1,15 +1,13 @@
-## Summary / 改动说明
+## 改动说明
 
-What problem does this solve, and why is this the smallest useful change?
+解决什么问题，为什么这样改。
 
-## Verification / 验证
+## 验证
 
-List commands and results. For docs-only changes, check links and runnable examples.
+列出运行过的命令和结果（测试、离线评测）。
 
-## Checklist / 检查清单
+## 检查清单
 
-- [ ] The kernel stays small; extensions are explicit and optional.
-- [ ] Public 1.x API, configuration, database, and data-format contracts are preserved.
-- [ ] Behavior changes include deterministic regression tests; docs match the implementation.
-- [ ] No keys, personal service URLs, ignored configuration, private files, or state exports are included.
-- [ ] Independently verifiable changes are kept in small commits.
+- [ ] 行为改动有确定性的回归测试，文档与实现一致。
+- [ ] 新的副作用工具实现了 prepare / 对账 / 补偿，并经统一执行入口运行。
+- [ ] 不包含密钥、个人服务地址、本地配置或状态数据库。
