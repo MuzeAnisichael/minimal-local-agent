@@ -1,0 +1,103 @@
+{
+  "family": "read_qa",
+  "title": "只读问答",
+  "description": "读取工作区文件回答问题，不产生副作用。",
+  "cases": [
+    {
+      "id": "qa-version",
+      "goal": "demo 项目当前的版本号是多少？",
+      "files": {
+        "pyproject.toml": "[project]\nname = \"demo\"\nversion = \"3.4.1\"\n"
+      },
+      "checks": [
+        {
+          "type": "answer_contains",
+          "text": "3.4.1"
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "pyproject.toml"
+            }
+          },
+          {
+            "text": "版本号是 3.4.1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa-search-bad-call",
+      "goal": "代码里 TIMEOUT 设置成了多少秒？",
+      "files": {
+        "src/app.py": "from util import TIMEOUT\n\nprint(TIMEOUT)\n",
+        "src/util.py": "TIMEOUT = 45  # 秒\n"
+      },
+      "checks": [
+        {
+          "type": "answer_contains",
+          "text": "45"
+        }
+      ],
+      "fault": {
+        "type": "bad_call"
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "search_text",
+            "args": {
+              "query": "TIMEOUT ="
+            }
+          },
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "src/util.py"
+            }
+          },
+          {
+            "text": "TIMEOUT 是 45 秒"
+          }
+        ]
+      }
+    },
+    {
+      "id": "qa-crash-before-read",
+      "goal": "文档里写的负责人是谁？",
+      "files": {
+        "docs/owner.md": "# 维护信息\n\n负责人：Alice\n"
+      },
+      "checks": [
+        {
+          "type": "answer_contains",
+          "text": "Alice"
+        }
+      ],
+      "fault": {
+        "type": "crash_before_tool",
+        "tool_name": "read_file"
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "list_files",
+            "args": {}
+          },
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "docs/owner.md"
+            }
+          },
+          {
+            "text": "负责人是 Alice"
+          }
+        ]
+      }
+    }
+  ]
+}

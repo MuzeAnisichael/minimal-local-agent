@@ -1,49 +1,74 @@
-[agent]
-provider = "ollama"
+# 复制为 agent.toml 后修改；agent.toml 已被 Git 忽略。
+
+[workspace]
+root = "workspace"
+state_dir = ".mla"          # 状态库：.mla/state.db
+
+[models.default]
+provider = "ollama"         # ollama | openai-compatible
 model = "qwen3.5:9b"
 base_url = "http://localhost:11434/v1"
-# For another OpenAI Chat Completions-compatible service, change provider to
-# "openai-compatible" in your ignored agent.toml. Use api_key_env = "MODEL_API_KEY"
-# for a remote endpoint; put the actual key in that environment variable.
-request_limit = 6
-tool_calls_limit = 8
-max_output_tokens = 2048
-max_context_bytes = 64000 # serialized model-message bytes, not model tokens
 temperature = 0.1
-write_policy = "confirm" # "confirm", "preview", or "deny"
+# 配置价格后才会计算成本（美元 / 百万 token）
+# input_price_per_mtok = 0.0
+# output_price_per_mtok = 0.0
 
-[paths]
-workspace = "workspace"
-database = ".minimal-local-agent/state.db"
+# 远程模型：密钥只从环境变量读取，不写进配置文件
+# [models.deepseek]
+# provider = "openai-compatible"
+# model = "deepseek-chat"
+# base_url = "https://api.deepseek.com/v1"
+# api_key_env = "DEEPSEEK_API_KEY"
+# input_price_per_mtok = 0.27     # 按官网当前价格填写，用于计算成本
+# output_price_per_mtok = 1.10
+#
+# [models.openrouter]
+# provider = "openai-compatible"
+# model = "qwen/qwen3-coder"       # 任意支持工具调用的 OpenRouter 模型
+# base_url = "https://openrouter.ai/api/v1"
+# api_key_env = "OPENROUTER_API_KEY"
+#
+# 评测时固定一个模型：mla eval --model deepseek --out report.json
+
+[routing]                   # 按角色选模型，靠后的是失败回退
+plan = ["default"]
+act = ["default"]
+summarize = ["default"]
+
+[budget]
+requests = 16
+tool_calls = 32
+output_tokens = 16000
+# cost_usd = 0.5
+max_output_tokens_per_request = 2048
+
+[context]
+max_tokens = 24000
+compaction = "truncate"     # truncate | summarize
+keep_recent_steps = 4
 
 [tools]
-max_file_bytes = 200000
-max_list_results = 200
-max_search_results = 100
-max_search_files = 500
-max_transaction_files = 8
-max_diff_chars = 40000
-max_mcp_result_chars = 100000
+timeout_s = 30
 
-# Optional modules are off by default; edit only your ignored agent.toml.
+[policy]
+write = "ask"               # allow | ask | preview | deny
+# [policy.tools]
+# search_text = "deny"
+
+[planning]
+enabled = true
+max_replans = 2             # 校验失败后最多重新执行几轮
+
+[recovery]
+enabled = true
+tool_retries = 1            # 工具超时后的自动重试次数
+compensate_on_failure = true
+
 [memory]
-enabled = false
-# database = ".minimal-local-agent/memory.db"
-# scope = "my-project" # Default: a workspace-path fingerprint; not a session ID.
+strategy = "none"           # none | episodic
 
-[planner]
-enabled = false # One advisory plan, charged to the SAME run budget.
-
-# Optional MCP clients are loopback-only and expose only explicitly named
-# tools. Install support with: pip install -e ".[mcp]"
 # [[mcp.servers]]
 # name = "notes"
-# url = "http://127.0.0.1:8000/mcp"
-# allow_tools = ["search_notes", "read_note"]
-
-[policy.tools]
-# search_text = "deny"
-# edit_files = "preview"
-# count_files = "deny" # An explicitly registered Python read tool.
-# Add a prefixed MCP tool here to disable it independently.
-# mcp_notes_read_note = "deny"
+# command = ["python", "notes_server.py"]   # 或 url = "http://127.0.0.1:8000/mcp"
+# tools = { search_notes = "read", add_note = "write" }
+# idempotent = ["add_note"]

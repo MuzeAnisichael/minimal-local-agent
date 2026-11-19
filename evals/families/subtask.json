@@ -1,0 +1,162 @@
+{
+  "family": "subtask",
+  "title": "受控子任务",
+  "description": "父任务把只读调研交给子任务；子任务有独立预算和受限工具，用量结算回父任务。",
+  "cases": [
+    {
+      "id": "sub-delegate-read",
+      "goal": "整理周会纪要里的决定事项，写到 summary.md",
+      "files": {
+        "notes/meeting.md": "# 周会\n\n- 讨论了发布节奏\n- 决定：下周三发布 2.0\n- 待办：补齐文档\n"
+      },
+      "checks": [
+        {
+          "type": "file_contains",
+          "path": "summary.md",
+          "text": "下周三发布"
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "run_subtask",
+            "args": {
+              "goal": "读取 notes/meeting.md，列出决定事项",
+              "tools": [
+                "read_file"
+              ],
+              "max_requests": 4
+            }
+          },
+          {
+            "tool": "write_file",
+            "args": {
+              "path": "summary.md",
+              "content": "# 决定事项\n\n- 下周三发布 2.0\n"
+            }
+          },
+          {
+            "text": "已写入 summary.md"
+          }
+        ],
+        "subtask": {
+          "turns": [
+            {
+              "tool": "read_file",
+              "args": {
+                "path": "notes/meeting.md"
+              }
+            },
+            {
+              "text": "决定：下周三发布 2.0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sub-crash-in-child",
+      "goal": "整理周会纪要里的待办事项，写到 todo.md（子任务执行中崩溃）",
+      "files": {
+        "notes/meeting.md": "# 周会\n\n- 讨论了发布节奏\n- 决定：下周三发布 2.0\n- 待办：补齐文档\n"
+      },
+      "checks": [
+        {
+          "type": "file_contains",
+          "path": "todo.md",
+          "text": "补齐文档"
+        }
+      ],
+      "fault": {
+        "type": "crash_before_tool",
+        "tool_name": "read_file"
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "run_subtask",
+            "args": {
+              "goal": "读取 notes/meeting.md，列出待办事项",
+              "tools": [
+                "read_file"
+              ],
+              "max_requests": 4
+            }
+          },
+          {
+            "tool": "write_file",
+            "args": {
+              "path": "todo.md",
+              "content": "# 待办\n\n- 补齐文档\n"
+            }
+          },
+          {
+            "text": "已写入 todo.md"
+          }
+        ],
+        "subtask": {
+          "turns": [
+            {
+              "tool": "read_file",
+              "args": {
+                "path": "notes/meeting.md"
+              }
+            },
+            {
+              "text": "待办：补齐文档"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "sub-budget-isolated",
+      "goal": "确认周会决定的发布版本号（子任务预算不够时自己读）",
+      "files": {
+        "notes/meeting.md": "# 周会\n\n- 讨论了发布节奏\n- 决定：下周三发布 2.0\n- 待办：补齐文档\n"
+      },
+      "checks": [
+        {
+          "type": "answer_contains",
+          "text": "2.0"
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "run_subtask",
+            "args": {
+              "goal": "读取 notes/meeting.md，找出发布版本号",
+              "tools": [
+                "read_file"
+              ],
+              "max_requests": 1
+            }
+          },
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "notes/meeting.md"
+            }
+          },
+          {
+            "text": "决定发布的版本是 2.0"
+          }
+        ],
+        "subtask": {
+          "turns": [
+            {
+              "tool": "read_file",
+              "args": {
+                "path": "notes/meeting.md"
+              }
+            },
+            {
+              "text": "版本 2.0"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

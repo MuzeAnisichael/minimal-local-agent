@@ -1,0 +1,119 @@
+{
+  "family": "single_edit",
+  "title": "单文件修改",
+  "description": "修改或新建一个文件，校验落盘内容。",
+  "cases": [
+    {
+      "id": "edit-config",
+      "goal": "把 config.ini 里的 debug 关掉",
+      "files": {
+        "config.ini": "debug = true\nport = 8080\n"
+      },
+      "checks": [
+        {
+          "type": "file_equals",
+          "path": "config.ini",
+          "content": "debug = false\nport = 8080\n"
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "read_file",
+            "args": {
+              "path": "config.ini"
+            }
+          },
+          {
+            "tool": "edit_files",
+            "args": {
+              "edits": [
+                {
+                  "path": "config.ini",
+                  "old_text": "debug = true",
+                  "new_text": "debug = false"
+                }
+              ]
+            }
+          },
+          {
+            "text": "已关闭 debug"
+          }
+        ]
+      }
+    },
+    {
+      "id": "edit-crash-after-write",
+      "goal": "把 README.md 里的 TODO 换成测试命令说明",
+      "files": {
+        "README.md": "# Demo\n\nTODO\n"
+      },
+      "checks": [
+        {
+          "type": "file_equals",
+          "path": "README.md",
+          "content": "# Demo\n\n运行 `make test` 执行测试。\n"
+        }
+      ],
+      "fault": {
+        "type": "crash_during_write",
+        "kind": "files"
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "edit_files",
+            "args": {
+              "edits": [
+                {
+                  "path": "README.md",
+                  "old_text": "TODO",
+                  "new_text": "运行 `make test` 执行测试。"
+                }
+              ]
+            }
+          },
+          {
+            "text": "已更新 README"
+          }
+        ]
+      }
+    },
+    {
+      "id": "edit-tool-timeout",
+      "goal": "新建 CHANGELOG.md，写上 1.0.0 版本的条目",
+      "files": {},
+      "settings": {
+        "tools": {
+          "timeout_s": 0.3
+        }
+      },
+      "checks": [
+        {
+          "type": "file_contains",
+          "path": "CHANGELOG.md",
+          "text": "## 1.0.0"
+        }
+      ],
+      "fault": {
+        "type": "slow_tool",
+        "tool_name": "write_file",
+        "delay_s": 1.0
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "write_file",
+            "args": {
+              "path": "CHANGELOG.md",
+              "content": "# 更新日志\n\n## 1.0.0\n\n- 首个版本\n"
+            }
+          },
+          {
+            "text": "已创建 CHANGELOG.md"
+          }
+        ]
+      }
+    }
+  ]
+}

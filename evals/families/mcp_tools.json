@@ -1,0 +1,124 @@
+{
+  "family": "mcp_tools",
+  "title": "MCP 工具接入",
+  "description": "通过 MCP 服务器读写外部状态；外部写操作无法对账，只有声明幂等的工具才在恢复时重放。",
+  "settings": {
+    "mcp": {
+      "servers": [
+        {
+          "name": "kv",
+          "command": [
+            "{python}",
+            "{families}/../servers/kv_server.py",
+            "{workspace}/kv.json"
+          ],
+          "tools": {
+            "put": "write",
+            "get": "read"
+          },
+          "idempotent": [
+            "put"
+          ]
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "mcp-put-get",
+      "goal": "在 kv 里把 release 设为 v2.0，然后读回来确认",
+      "files": {},
+      "checks": [
+        {
+          "type": "answer_contains",
+          "text": "v2.0"
+        },
+        {
+          "type": "file_contains",
+          "path": "kv.json",
+          "text": "\"release\": \"v2.0\""
+        }
+      ],
+      "script": {
+        "turns": [
+          {
+            "tool": "mcp_kv_put",
+            "args": {
+              "key": "release",
+              "value": "v2.0"
+            }
+          },
+          {
+            "tool": "mcp_kv_get",
+            "args": {
+              "key": "release"
+            }
+          },
+          {
+            "text": "release = v2.0"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mcp-get-crash",
+      "goal": "kv 里记录的 owner 是谁？",
+      "files": {
+        "kv.json": "{\"owner\": \"ops-team\"}"
+      },
+      "checks": [
+        {
+          "type": "answer_contains",
+          "text": "ops-team"
+        }
+      ],
+      "fault": {
+        "type": "crash_before_tool",
+        "tool_name": "mcp_kv_get"
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "mcp_kv_get",
+            "args": {
+              "key": "owner"
+            }
+          },
+          {
+            "text": "owner 是 ops-team"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mcp-put-crash",
+      "goal": "在 kv 里把 freeze 设为 true（写入后进程崩溃）",
+      "files": {},
+      "checks": [
+        {
+          "type": "file_contains",
+          "path": "kv.json",
+          "text": "\"freeze\": \"true\""
+        }
+      ],
+      "fault": {
+        "type": "crash_during_write",
+        "kind": "mcp:kv"
+      },
+      "script": {
+        "turns": [
+          {
+            "tool": "mcp_kv_put",
+            "args": {
+              "key": "freeze",
+              "value": "true"
+            }
+          },
+          {
+            "text": "已设置 freeze"
+          }
+        ]
+      }
+    }
+  ]
+}

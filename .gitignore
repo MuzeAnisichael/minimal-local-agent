@@ -13,7 +13,7 @@ dist/
 agent.toml
 .env
 .env.*
-.minimal-local-agent/
+.mla/
 
 # Agent workspace data
 workspace/*

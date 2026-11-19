@@ -4,21 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "minimal-local-agent"
-version = "1.1.0"
-description = "A minimal, auditable local-first AI agent with a local web console."
+version = "2.0.0"
+description = "有状态 Agent 执行内核：检查点、幂等工具账本、补偿恢复、事件轨迹与按任务族评测。"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "MuzeAnisichael" }]
-keywords = ["agent", "ai", "local-first", "ollama", "pydantic-ai", "web"]
+keywords = ["agent", "llm", "checkpoint", "recovery", "evaluation", "mcp"]
 classifiers = [
-  "Development Status :: 5 - Production/Stable",
+  "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
@@ -32,26 +33,18 @@ dev = [
 ]
 mcp = [
   "pydantic-ai-slim[mcp]>=1.107.1,<2.0.0",
-  "mcp<2.0.0",
-]
-a2a = [
-  "a2a-sdk[http-server]>=1.2.2,<1.3.0",
-  "uvicorn>=0.30,<1.0",
+  "mcp>=1.10,<2.0.0",
 ]
 
 [project.scripts]
-minimal-agent = "minimal_local_agent.cli:main"
+mla = "minimal_local_agent.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/MuzeAnisichael/minimal-local-agent"
-Issues = "https://github.com/MuzeAnisichael/minimal-local-agent/issues"
 Source = "https://github.com/MuzeAnisichael/minimal-local-agent"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-minimal_local_agent = ["web_assets/*.html", "web_assets/*.css", "web_assets/*.js"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
@@ -63,3 +56,5 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+# 格式化器负责代码行宽；中文注释和长字符串不再单独报错。
+ignore = ["E501"]
