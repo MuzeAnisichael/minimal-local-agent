@@ -24,3 +24,6 @@ workspace/*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Eval reports
+eval-report*.json

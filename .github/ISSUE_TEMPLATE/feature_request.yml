@@ -1,0 +1,21 @@
+name: 功能建议
+description: 新能力、新工具、新的评测任务族
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题
+      description: 现在做不到什么，或者哪里不方便。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的做法
+      description: 如果涉及副作用，请说明怎样对账和补偿。
+  - type: textarea
+    id: eval
+    attributes:
+      label: 怎样验证
+      description: 用什么测试或评测用例说明它有效。

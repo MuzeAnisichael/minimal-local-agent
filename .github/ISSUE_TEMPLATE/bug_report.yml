@@ -1,0 +1,33 @@
+name: 问题报告
+description: 运行结果和预期不一致、崩溃或恢复出错
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 实际结果和预期结果分别是什么。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 使用的命令、任务目标、校验规则；能用离线脚本复现最好。
+      placeholder: |
+        mla run "..." --checks checks.json
+    validations:
+      required: true
+  - type: textarea
+    id: trace
+    attributes:
+      label: 事件轨迹
+      description: "`mla trace TASK_ID` 的输出（请删去密钥和私人内容）。"
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: 版本与环境
+      placeholder: "minimal-local-agent 2.0.0 / Python 3.12 / Windows 11 / deepseek-chat"
+    validations:
+      required: true

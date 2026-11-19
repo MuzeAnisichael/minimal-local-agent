@@ -1,4 +1,5 @@
-include LICENSE README.md SECURITY.md agent.example.toml
+include LICENSE README.md README.en.md CHANGELOG.md CONTRIBUTING.md SECURITY.md agent.example.toml
+recursive-include examples *.py
 recursive-include docs *.md
 recursive-include evals *.json
 recursive-include tests *.py
