@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "minimal-local-agent"
-version = "2.0.0.dev0"
+version = "2.0.0"
 description = "有状态 Agent 执行内核：检查点、幂等工具账本、补偿恢复、事件轨迹与按任务族评测。"
 readme = "README.md"
 requires-python = ">=3.11"
