@@ -42,6 +42,9 @@ mla = "minimal_local_agent.cli:main"
 [project.urls]
 Homepage = "https://github.com/MuzeAnisichael/minimal-local-agent"
 Source = "https://github.com/MuzeAnisichael/minimal-local-agent"
+Documentation = "https://github.com/MuzeAnisichael/minimal-local-agent/tree/main/docs"
+Changelog = "https://github.com/MuzeAnisichael/minimal-local-agent/blob/main/CHANGELOG.md"
+Issues = "https://github.com/MuzeAnisichael/minimal-local-agent/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

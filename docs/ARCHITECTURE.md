@@ -162,6 +162,8 @@ task.started
 
 ## 评测
 
+任务族、故障、指标和结果的完整说明见 [EVALUATION.md](EVALUATION.md)，这里只讲运行器的设计。
+
 评测集按任务族组织（`evals/families/*.json`），每个用例包含目标、初始文件、校验规则、离线脚本和可选的故障。
 四种策略是配置覆盖（见 `eval/runner.py` 的 `STRATEGIES`）：恢复开关、重新规划次数、记忆策略，模型和预算对所有策略相同。
 
