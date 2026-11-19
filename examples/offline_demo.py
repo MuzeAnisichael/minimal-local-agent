@@ -61,7 +61,9 @@ def section(title: str) -> None:
 def main() -> int:
     root = Path(tempfile.mkdtemp(prefix="mla-demo-"))
     (root / "ws").mkdir()
-    (root / "ws" / "config.ini").write_text("debug = true\n", encoding="utf-8")
+    (root / "ws" / "config.ini").write_text(
+        "debug = true\n", encoding="utf-8", newline="\n"
+    )
 
     section("1. 写盘后、账本标记完成前进程崩溃")
     rt = make_runtime(root)
@@ -90,4 +92,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # Windows 控制台或重定向时默认编码可能不是 UTF-8，打印中文会报错
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     sys.exit(main())
